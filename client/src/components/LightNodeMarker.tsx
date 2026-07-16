@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { LightNode, LIGHT_TYPE_MAP, LIGHT_COLOR_MAP } from "@/lib/catalog";
+import { LightNode, SKU_MAP, LIGHT_COLOR_MAP } from "@/lib/catalog";
 import { X, RotateCw } from "lucide-react";
 
 interface Props {
@@ -23,9 +23,10 @@ export function LightNodeMarker({
   onRemove,
   onRotate,
 }: Props) {
-  const type = LIGHT_TYPE_MAP[node.type];
+  const type = SKU_MAP[node.typeId];
   const color = LIGHT_COLOR_MAP[node.color];
   const dragging = useRef(false);
+  const isEquipment = type.spreadDeg === 0; // siren/control = no warning cone
 
   const handlePointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();
@@ -53,8 +54,8 @@ export function LightNodeMarker({
       style={{ left: `${node.x}%`, top: `${node.y}%`, zIndex: selected ? 40 : 20 }}
       data-testid={`node-${node.id}`}
     >
-      {/* coverage cone */}
-      {showCoverage && (
+      {/* coverage cone (warning lights only) */}
+      {showCoverage && !isEquipment && (
         <div
           className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
           style={{ transform: `translate(-50%,-50%) rotate(${node.rotation}deg)` }}
@@ -74,43 +75,58 @@ export function LightNodeMarker({
         </div>
       )}
 
-      {/* the light node marker */}
+      {/* the node marker */}
       <div
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        className={`relative flex items-center justify-center rounded-full cursor-grab active:cursor-grabbing border-2 transition-shadow ${
-          selected ? "ring-2 ring-white ring-offset-1 ring-offset-black" : ""
-        }`}
+        className={`relative flex items-center justify-center cursor-grab active:cursor-grabbing border-2 transition-shadow ${
+          isEquipment ? "rounded-sm" : "rounded-full"
+        } ${selected ? "ring-2 ring-white ring-offset-1 ring-offset-black" : ""}`}
         style={{
           width: type.size,
           height: type.size,
-          backgroundColor: color.hex,
-          borderColor: "rgba(255,255,255,0.85)",
-          boxShadow: `0 0 ${selected ? 18 : 10}px 2px ${color.glow}`,
+          backgroundColor: isEquipment ? "#1f2937" : color.hex,
+          borderColor: isEquipment ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.85)",
+          boxShadow: isEquipment
+            ? "0 0 6px 1px rgba(0,0,0,0.5)"
+            : `0 0 ${selected ? 18 : 10}px 2px ${color.glow}`,
         }}
         data-testid={`marker-${node.id}`}
       >
-        <span className="text-[9px] font-bold leading-none text-black/80 select-none">
+        <span
+          className={`text-[8px] font-bold leading-none select-none ${
+            isEquipment ? "text-white/90" : "text-black/80"
+          }`}
+        >
           {node.label}
         </span>
       </div>
 
+      {/* SKU tag on hover/selected */}
+      {selected && (
+        <div className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded bg-black/85 px-1.5 py-0.5 text-[9px] font-medium text-white">
+          {type.sku} · {type.name}
+        </div>
+      )}
+
       {/* controls when selected */}
       {selected && (
         <div className="absolute -top-3 left-full ml-1 flex gap-1">
-          <button
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRotate(node.id);
-            }}
-            className="flex h-5 w-5 items-center justify-center rounded-full bg-secondary text-secondary-foreground border border-border hover-elevate"
-            title="Rotate coverage"
-            data-testid={`button-rotate-${node.id}`}
-          >
-            <RotateCw className="h-3 w-3" />
-          </button>
+          {!isEquipment && (
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRotate(node.id);
+              }}
+              className="flex h-5 w-5 items-center justify-center rounded-full bg-secondary text-secondary-foreground border border-border hover-elevate"
+              title="Rotate coverage"
+              data-testid={`button-rotate-${node.id}`}
+            >
+              <RotateCw className="h-3 w-3" />
+            </button>
+          )}
           <button
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {

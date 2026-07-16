@@ -4,15 +4,17 @@ import { jsPDF } from "jspdf";
 import {
   VIEWS,
   ViewId,
-  LIGHT_TYPES,
+  SKU_TYPES,
+  SKU_MAP,
+  SkuGroup,
+  GROUP_LABELS,
   LIGHT_COLORS,
-  LIGHT_TYPE_MAP,
   LIGHT_COLOR_MAP,
   LightNode,
-  LightTypeId,
   LightColorId,
   BuildParams,
   DEFAULT_PARAMS,
+  WAGONER_PRESET,
 } from "@/lib/catalog";
 import { VehicleOverlays } from "@/components/VehicleOverlays";
 import { LightNodeMarker } from "@/components/LightNodeMarker";
@@ -31,6 +33,7 @@ import {
   Plus,
   Sun,
   Moon,
+  PackageOpen,
 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 
@@ -47,6 +50,8 @@ const VIEW_IMAGES: Record<ViewId, string> = {
   right: rightImg,
   hero: heroImg,
 };
+
+const GROUP_ORDER: SkuGroup[] = ["front", "hatch", "siren"];
 
 // Convert a PNG data URL to a compressed JPEG data URL (over a dark backdrop).
 async function pngToJpeg(pngUrl: string, quality = 0.85): Promise<string> {
@@ -69,12 +74,8 @@ async function pngToJpeg(pngUrl: string, quality = 0.85): Promise<string> {
 }
 
 let nodeCounter = 0;
-const labelFor = (type: LightTypeId) => {
-  nodeCounter += 1;
-  const prefix =
-    type === "t_series" ? "T" : type === "edge_9xt" ? "E" : "W";
-  return `${prefix}${nodeCounter}`;
-};
+const uid = (typeId: string) =>
+  `${typeId}-${Date.now()}-${(nodeCounter++).toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
 
 export default function Visualizer() {
   const { theme, toggle } = useTheme();
@@ -84,34 +85,37 @@ export default function Visualizer() {
   const [nodes, setNodes] = useState<LightNode[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCoverage, setShowCoverage] = useState(true);
-  const [activeColor, setActiveColor] = useState<LightColorId>("blue");
   const [exporting, setExporting] = useState(false);
 
   const stageRef = useRef<HTMLDivElement>(null);
-  const dragType = useRef<LightTypeId | null>(null);
+  const dragType = useRef<string | null>(null);
 
   const viewNodes = nodes.filter((n) => n.view === activeView);
   const projectName = "2025 Ford Police Interceptor Utility";
 
+  // Add a node of a given SKU type. If x/y omitted, use the SKU's suggested
+  // default for the active view (falls back to center).
   const addNode = useCallback(
-    (type: LightTypeId, x: number, y: number) => {
+    (typeId: string, x?: number, y?: number) => {
+      const type = SKU_MAP[typeId];
+      const def = type.defaults[activeView];
       const node: LightNode = {
-        id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: uid(typeId),
         view: activeView,
-        type,
-        color: activeColor,
-        x,
-        y,
-        rotation: activeView === "rear" ? 180 : 0,
-        label: labelFor(type),
+        typeId,
+        color: type.defaultColor,
+        x: x ?? def?.x ?? 50,
+        y: y ?? def?.y ?? 50,
+        rotation: def?.rot ?? (activeView === "rear" ? 180 : 0),
+        label: type.sku,
       };
       setNodes((prev) => [...prev, node]);
       setSelectedId(node.id);
     },
-    [activeView, activeColor],
+    [activeView],
   );
 
-  // Drag from palette
+  // Drag from palette — drop lands where released, snapped near default if close-ish
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (!dragType.current || !stageRef.current) return;
@@ -121,9 +125,6 @@ export default function Visualizer() {
     addNode(dragType.current, x, y);
     dragType.current = null;
   };
-
-  // Click-to-add (mobile / accessibility fallback)
-  const handleAddCentered = (type: LightTypeId) => addNode(type, 50, 50);
 
   const moveNode = (id: string, x: number, y: number) =>
     setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, x, y } : n)));
@@ -142,10 +143,41 @@ export default function Visualizer() {
     setNodes((prev) => prev.filter((n) => n.view !== activeView));
     setSelectedId(null);
   };
+  const clearAll = () => {
+    setNodes([]);
+    setSelectedId(null);
+  };
+
+  // Load the Wagoner build preset
+  const loadWagoner = () => {
+    const placed: LightNode[] = [];
+    for (const item of WAGONER_PRESET.place) {
+      const type = SKU_MAP[item.typeId];
+      for (const view of item.views) {
+        const def = type.defaults[view];
+        placed.push({
+          id: uid(item.typeId),
+          view,
+          typeId: item.typeId,
+          color: type.defaultColor,
+          x: def?.x ?? 50,
+          y: def?.y ?? 50,
+          rotation: def?.rot ?? (view === "rear" ? 180 : 0),
+          label: type.sku,
+        });
+      }
+    }
+    setNodes(placed);
+    setParams(WAGONER_PRESET.params);
+    setSelectedId(null);
+    toast({
+      title: "Wagoner build loaded",
+      description: `Est. 1233 · ${placed.length} components placed · push bar off.`,
+    });
+  };
 
   // ---- Export helpers ----
   const captureView = async (_view: ViewId, ratio = 2): Promise<string> => {
-    // Snapshot the current stage DOM at high resolution.
     if (!stageRef.current) throw new Error("stage not ready");
     return toPng(stageRef.current, {
       pixelRatio: ratio,
@@ -186,12 +218,11 @@ export default function Visualizer() {
       for (let i = 0; i < VIEWS.length; i++) {
         const v = VIEWS[i];
         setActiveView(v.id);
-        await new Promise((r) => setTimeout(r, 240)); // allow render
+        await new Promise((r) => setTimeout(r, 240));
         const pngUrl = await captureView(v.id, 1.6);
         const img = await pngToJpeg(pngUrl, 0.85);
 
         if (i > 0) pdf.addPage();
-        // Header band
         pdf.setFillColor(15, 17, 21);
         pdf.rect(0, 0, pageW, pageH, "F");
         pdf.setTextColor(255, 255, 255);
@@ -203,23 +234,24 @@ export default function Visualizer() {
         pdf.setTextColor(180, 190, 205);
         pdf.text(`${projectName}  ·  ${v.label} View`, 40, 58);
 
-        // Image
         const imgW = pageW - 80;
         const imgH = imgW * 0.62;
-        pdf.addImage(img, "JPEG", 40, 74, imgW, Math.min(imgH, pageH - 190));
+        pdf.addImage(img, "JPEG", 40, 74, imgW, Math.min(imgH, pageH - 210));
 
-        // Legend of nodes on this view
+        // SKU list for this view
         const vNodes = nodes.filter((n) => n.view === v.id);
-        let ly = pageH - 96;
-        pdf.setFontSize(9);
+        const skuList = vNodes.map((n) => SKU_MAP[n.typeId].sku).join(", ") || "None placed";
+        pdf.setFontSize(8.5);
         pdf.setTextColor(210, 218, 230);
+        pdf.text(`Federal Signal SKUs: ${skuList}`, 40, pageH - 108, { maxWidth: pageW - 80 });
+        pdf.setTextColor(160, 170, 185);
         pdf.text(
-          `Nodes: ${vNodes.length}  |  Push Bar: ${params.pushBar ? "Yes" : "No"}  |  Dash Lighting: ${params.dashLighting ? "Yes" : "No"}  |  Rear Hatch: ${params.rearHatchLights ? "Yes" : "No"}`,
+          `Components: ${vNodes.length}  |  Push Bar: ${params.pushBar ? "Yes" : "No"}  |  Dash Lighting: ${params.dashLighting ? "Yes" : "No"}  |  Rear Hatch: ${params.rearHatchLights ? "Yes" : "No"}`,
           40,
-          ly,
+          pageH - 92,
         );
 
-        // Sign-off line
+        // Sign-off lines
         pdf.setDrawColor(120, 130, 145);
         pdf.setLineWidth(0.8);
         pdf.line(40, pageH - 52, 260, pageH - 52);
@@ -251,7 +283,7 @@ export default function Visualizer() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       {/* Top bar */}
-      <header className="flex items-center justify-between border-b border-border px-4 py-3 md:px-6" data-export-hide>
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 md:px-6" data-export-hide>
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <Shield className="h-5 w-5" />
@@ -260,10 +292,13 @@ export default function Visualizer() {
             <h1 className="text-sm font-bold leading-tight md:text-base" data-testid="text-title">
               PIU Lighting Coverage Visualizer
             </h1>
-            <p className="text-xs text-muted-foreground">{projectName}</p>
+            <p className="text-xs text-muted-foreground">Federal Signal · {projectName}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={loadWagoner} data-testid="button-load-wagoner">
+            <PackageOpen className="mr-1.5 h-4 w-4" /> Load Wagoner Build
+          </Button>
           <Button variant="outline" size="sm" onClick={exportPng} disabled={exporting} data-testid="button-export-png">
             <Download className="mr-1.5 h-4 w-4" /> PNG
           </Button>
@@ -277,78 +312,65 @@ export default function Visualizer() {
       </header>
 
       <div className="flex flex-1 flex-col lg:flex-row">
-        {/* Left palette */}
-        <aside className="w-full shrink-0 border-b border-border p-4 lg:w-72 lg:border-b-0 lg:border-r" data-export-hide>
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Light Nodes
+        {/* Left palette — grouped by function */}
+        <aside className="w-full shrink-0 border-b border-border p-4 lg:w-80 lg:border-b-0 lg:border-r lg:overflow-y-auto" data-export-hide>
+          <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Federal Signal SKUs
           </h2>
           <p className="mb-3 text-xs text-muted-foreground">
-            Drag onto the vehicle, or tap Add. Drag to reposition; select to rotate coverage or recolor.
+            Drag onto the vehicle, or tap + to drop at the suggested mount. Then drag to fine-tune, select to rotate or recolor.
           </p>
-          <div className="space-y-2">
-            {LIGHT_TYPES.map((t) => (
-              <div
-                key={t.id}
-                draggable
-                onDragStart={() => (dragType.current = t.id)}
-                className="group flex cursor-grab items-start gap-3 rounded-md border border-border bg-card p-3 hover-elevate active:cursor-grabbing"
-                data-testid={`palette-${t.id}`}
-              >
-                <div
-                  className="mt-0.5 h-6 w-6 shrink-0 rounded-full border-2 border-white/80"
-                  style={{ backgroundColor: LIGHT_COLOR_MAP[activeColor].hex, boxShadow: `0 0 8px ${LIGHT_COLOR_MAP[activeColor].glow}` }}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-sm font-semibold">{t.name}</span>
-                    <button
-                      onClick={() => handleAddCentered(t.id)}
-                      className="flex h-5 w-5 items-center justify-center rounded bg-secondary text-secondary-foreground hover-elevate"
-                      title="Add to center"
-                      data-testid={`button-add-${t.id}`}
+
+          {GROUP_ORDER.map((group) => (
+            <div key={group} className="mb-4">
+              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-primary/80">
+                {GROUP_LABELS[group]}
+              </h3>
+              <div className="space-y-2">
+                {SKU_TYPES.filter((t) => t.group === group).map((t) => {
+                  const isEquip = t.spreadDeg === 0;
+                  const c = LIGHT_COLOR_MAP[t.defaultColor];
+                  return (
+                    <div
+                      key={t.id}
+                      draggable
+                      onDragStart={() => (dragType.current = t.id)}
+                      className="group flex cursor-grab items-start gap-2.5 rounded-md border border-border bg-card p-2.5 hover-elevate active:cursor-grabbing"
+                      data-testid={`palette-${t.id}`}
                     >
-                      <Plus className="h-3 w-3" />
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">{t.category}</p>
-                  <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{t.desc}</p>
-                </div>
+                      <div
+                        className={`mt-0.5 h-6 w-6 shrink-0 border-2 ${isEquip ? "rounded-sm bg-secondary" : "rounded-full"}`}
+                        style={
+                          isEquip
+                            ? { borderColor: "rgba(255,255,255,0.5)" }
+                            : { backgroundColor: c.hex, borderColor: "rgba(255,255,255,0.8)", boxShadow: `0 0 8px ${c.glow}` }
+                        }
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-sm font-semibold font-mono">{t.sku}</span>
+                          <button
+                            onClick={() => addNode(t.id)}
+                            className="flex h-5 w-5 items-center justify-center rounded bg-secondary text-secondary-foreground hover-elevate"
+                            title="Drop at suggested mount"
+                            data-testid={`button-add-${t.id}`}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <p className="text-[11px] font-medium">{t.name}</p>
+                        <p className="text-[10px] leading-snug text-muted-foreground">{t.mount}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
-
-          <Separator className="my-4" />
-
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Active Color
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {LIGHT_COLORS.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => {
-                  setActiveColor(c.id);
-                  if (selectedNode) setNodeColor(selectedNode.id, c.id);
-                }}
-                className={`h-7 w-7 rounded-full border-2 transition-transform hover:scale-110 ${
-                  activeColor === c.id ? "border-white ring-2 ring-white/40" : "border-white/40"
-                }`}
-                style={{ backgroundColor: c.hex, boxShadow: `0 0 8px ${c.glow}` }}
-                title={c.name}
-                data-testid={`color-${c.id}`}
-              />
-            ))}
-          </div>
-          {selectedNode && (
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              Selecting a color recolors the highlighted node ({selectedNode.label}).
-            </p>
-          )}
+            </div>
+          ))}
         </aside>
 
         {/* Center stage */}
         <main className="flex flex-1 flex-col items-center p-4">
-          {/* View switcher */}
           <div className="mb-3 flex flex-wrap items-center justify-center gap-2" data-export-hide>
             {VIEWS.map((v) => (
               <button
@@ -372,7 +394,6 @@ export default function Visualizer() {
             ))}
           </div>
 
-          {/* Stage */}
           <div
             ref={stageRef}
             onDragOver={(e) => e.preventDefault()}
@@ -382,7 +403,6 @@ export default function Visualizer() {
             style={{ background: "#0f1115" }}
             data-testid="stage"
           >
-            {/* subtle grid for coverage reference */}
             <div
               className="pointer-events-none absolute inset-0 opacity-[0.14]"
               style={{
@@ -411,31 +431,27 @@ export default function Visualizer() {
                 onRotate={rotateNode}
               />
             ))}
-            {/* Export watermark - only visible baked into capture */}
             <div className="pointer-events-none absolute bottom-2 right-3 text-[10px] font-medium text-white/50">
               Integrity Upfitters · {projectName}
             </div>
           </div>
 
-          {/* Stage controls */}
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2" data-export-hide>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowCoverage((s) => !s)}
-              data-testid="button-toggle-coverage"
-            >
+            <Button variant="outline" size="sm" onClick={() => setShowCoverage((s) => !s)} data-testid="button-toggle-coverage">
               {showCoverage ? <EyeOff className="mr-1.5 h-4 w-4" /> : <Eye className="mr-1.5 h-4 w-4" />}
               {showCoverage ? "Hide" : "Show"} Coverage
             </Button>
             <Button variant="outline" size="sm" onClick={clearView} data-testid="button-clear-view">
               <Trash2 className="mr-1.5 h-4 w-4" /> Clear View
             </Button>
+            <Button variant="ghost" size="sm" onClick={clearAll} data-testid="button-clear-all">
+              Clear All
+            </Button>
           </div>
         </main>
 
         {/* Right params panel */}
-        <aside className="w-full shrink-0 border-t border-border p-4 lg:w-72 lg:border-t-0 lg:border-l" data-export-hide>
+        <aside className="w-full shrink-0 border-t border-border p-4 lg:w-72 lg:border-t-0 lg:border-l lg:overflow-y-auto" data-export-hide>
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Build Parameters
           </h2>
@@ -443,7 +459,7 @@ export default function Visualizer() {
             <ToggleRow
               id="pushBar"
               label="Push Bar"
-              hint="Front bumper guard (baseline on most builds)"
+              hint="Front bumper guard (off on Wagoner units)"
               checked={params.pushBar}
               onChange={(v) => setParams((p) => ({ ...p, pushBar: v }))}
             />
@@ -474,7 +490,7 @@ export default function Visualizer() {
               return (
                 <div key={v.id} className="flex items-center justify-between" data-testid={`summary-${v.id}`}>
                   <span className="text-muted-foreground">{v.label}</span>
-                  <span className="font-semibold">{count} node{count !== 1 ? "s" : ""}</span>
+                  <span className="font-semibold">{count}</span>
                 </div>
               );
             })}
@@ -489,13 +505,34 @@ export default function Visualizer() {
             <>
               <Separator className="my-4" />
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Selected Node
+                Selected · {SKU_MAP[selectedNode.typeId].sku}
               </h2>
               <div className="rounded-md border border-border bg-card p-3 text-xs">
-                <div className="mb-1 font-semibold">{LIGHT_TYPE_MAP[selectedNode.type].name} · {selectedNode.label}</div>
-                <div className="text-muted-foreground">Color: {LIGHT_COLOR_MAP[selectedNode.color].name}</div>
-                <div className="text-muted-foreground">Rotation: {selectedNode.rotation}°</div>
+                <div className="mb-1 font-semibold">{SKU_MAP[selectedNode.typeId].name}</div>
+                <div className="text-muted-foreground">{SKU_MAP[selectedNode.typeId].mount}</div>
+                {SKU_MAP[selectedNode.typeId].spreadDeg > 0 && (
+                  <div className="mt-0.5 text-muted-foreground">Rotation: {selectedNode.rotation}°</div>
+                )}
               </div>
+              {SKU_MAP[selectedNode.typeId].spreadDeg > 0 && (
+                <>
+                  <p className="mt-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Color</p>
+                  <div className="flex flex-wrap gap-2">
+                    {LIGHT_COLORS.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setNodeColor(selectedNode.id, c.id)}
+                        className={`h-7 w-7 rounded-full border-2 transition-transform hover:scale-110 ${
+                          selectedNode.color === c.id ? "border-white ring-2 ring-white/40" : "border-white/40"
+                        }`}
+                        style={{ backgroundColor: c.hex, boxShadow: `0 0 8px ${c.glow}` }}
+                        title={c.name}
+                        data-testid={`color-${c.id}`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
             </>
           )}
         </aside>
