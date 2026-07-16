@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { LightNode, SKU_MAP, LIGHT_COLOR_MAP } from "@/lib/catalog";
+import { LightFixture } from "./LightFixture";
 import { X, RotateCw } from "lucide-react";
 
 interface Props {
@@ -24,9 +25,11 @@ export function LightNodeMarker({
   onRotate,
 }: Props) {
   const type = SKU_MAP[node.typeId];
-  const color = LIGHT_COLOR_MAP[node.color];
   const dragging = useRef(false);
   const isEquipment = type.spreadDeg === 0; // siren/control = no warning cone
+
+  const c1 = LIGHT_COLOR_MAP[node.color1];
+  const c2 = LIGHT_COLOR_MAP[node.color2];
 
   const handlePointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();
@@ -54,7 +57,7 @@ export function LightNodeMarker({
       style={{ left: `${node.x}%`, top: `${node.y}%`, zIndex: selected ? 40 : 20 }}
       data-testid={`node-${node.id}`}
     >
-      {/* coverage cone (warning lights only) */}
+      {/* coverage cone (warning lights only) — split gradient of both colors */}
       {showCoverage && !isEquipment && (
         <div
           className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
@@ -66,53 +69,62 @@ export function LightNodeMarker({
               height: 0,
               borderLeft: `${type.spreadDeg / 3}px solid transparent`,
               borderRight: `${type.spreadDeg / 3}px solid transparent`,
-              borderBottom: `${type.spreadDeg / 1.6}px solid ${color.glow}`,
-              opacity: 0.4,
+              borderBottom: `${type.spreadDeg / 1.6}px solid ${c1.glow}`,
+              opacity: 0.32,
               transformOrigin: "top center",
-              filter: "blur(1px)",
+              filter: "blur(1.5px)",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: 0,
+              height: 0,
+              borderLeft: `${type.spreadDeg / 3}px solid transparent`,
+              borderRight: `${type.spreadDeg / 3}px solid transparent`,
+              borderBottom: `${type.spreadDeg / 1.6}px solid ${c2.glow}`,
+              opacity: 0.22,
+              transformOrigin: "top center",
+              transform: "scaleX(0.5) translateX(100%)",
+              filter: "blur(1.5px)",
             }}
           />
         </div>
       )}
 
-      {/* the node marker */}
+      {/* the fixture body */}
       <div
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        className={`relative flex items-center justify-center cursor-grab active:cursor-grabbing border-2 transition-shadow ${
-          isEquipment ? "rounded-sm" : "rounded-full"
-        } ${selected ? "ring-2 ring-white ring-offset-1 ring-offset-black" : ""}`}
+        className={`relative cursor-grab active:cursor-grabbing rounded-[3px] transition-shadow ${
+          selected ? "ring-2 ring-white ring-offset-2 ring-offset-transparent" : ""
+        }`}
         style={{
-          width: type.size,
-          height: type.size,
-          backgroundColor: isEquipment ? "#1f2937" : color.hex,
-          borderColor: isEquipment ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.85)",
-          boxShadow: isEquipment
-            ? "0 0 6px 1px rgba(0,0,0,0.5)"
-            : `0 0 ${selected ? 18 : 10}px 2px ${color.glow}`,
+          transform: `rotate(${node.rotation}deg)`,
+          filter: isEquipment
+            ? "drop-shadow(0 1px 3px rgba(0,0,0,0.6))"
+            : `drop-shadow(0 0 ${selected ? 8 : 5}px ${c1.glow}) drop-shadow(0 0 ${
+                selected ? 10 : 6
+              }px ${c2.glow})`,
         }}
         data-testid={`marker-${node.id}`}
       >
-        <span
-          className={`text-[8px] font-bold leading-none select-none ${
-            isEquipment ? "text-white/90" : "text-black/80"
-          }`}
-        >
-          {node.label}
-        </span>
+        <LightFixture sku={type} color1={node.color1} color2={node.color2} scale={selected ? 1.15 : 1} />
       </div>
 
-      {/* SKU tag on hover/selected */}
+      {/* SKU tag on selected */}
       {selected && (
-        <div className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded bg-black/85 px-1.5 py-0.5 text-[9px] font-medium text-white">
+        <div className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded bg-black/85 px-1.5 py-0.5 text-[9px] font-medium text-white">
           {type.sku} · {type.name}
         </div>
       )}
 
       {/* controls when selected */}
       {selected && (
-        <div className="absolute -top-3 left-full ml-1 flex gap-1">
+        <div className="absolute -top-4 left-full ml-1 flex gap-1">
           {!isEquipment && (
             <button
               onPointerDown={(e) => e.stopPropagation()}
@@ -121,7 +133,7 @@ export function LightNodeMarker({
                 onRotate(node.id);
               }}
               className="flex h-5 w-5 items-center justify-center rounded-full bg-secondary text-secondary-foreground border border-border hover-elevate"
-              title="Rotate coverage"
+              title="Rotate"
               data-testid={`button-rotate-${node.id}`}
             >
               <RotateCw className="h-3 w-3" />
@@ -134,7 +146,7 @@ export function LightNodeMarker({
               onRemove(node.id);
             }}
             className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground border border-border hover-elevate"
-            title="Remove node"
+            title="Remove"
             data-testid={`button-remove-${node.id}`}
           >
             <X className="h-3 w-3" />

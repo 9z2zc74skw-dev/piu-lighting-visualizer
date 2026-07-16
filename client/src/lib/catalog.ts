@@ -27,6 +27,15 @@ export const GROUP_LABELS: Record<SkuGroup, string> = {
   siren: "Siren / Control",
 };
 
+// Physical form factor of the light body — drives the rendered SVG shape.
+// bar   = short linear MicroPulse LED bar
+// wide  = wide low-profile mirror head
+// stick = long multi-segment SignalMaster
+// module= compact rectangular corner module
+// equip = siren/control equipment box (no warning color)
+// scene = takedown/scene flood (white only)
+export type FixtureShape = "bar" | "wide" | "stick" | "module" | "equip" | "scene";
+
 // A catalog SKU (product) that can be dropped as a node
 export interface SkuType {
   id: string; // internal id
@@ -34,9 +43,13 @@ export interface SkuType {
   name: string; // friendly name
   group: SkuGroup;
   mount: string; // where it mounts, shown in palette
+  shape: FixtureShape; // rendered body form factor
+  segments: number; // number of lit LED segments across the body
   spreadDeg: number; // coverage cone width
-  size: number; // marker diameter px
-  defaultColor: LightColorId;
+  lengthPx: number; // body length (long axis) in px on the stage
+  defaultC1: LightColorId; // default primary color
+  defaultC2: LightColorId; // default secondary color (split heads)
+  allowWhite: boolean; // whether white is a valid color for this head
   // suggested default drop position per view (percent of stage). If a view is
   // missing, the SKU is not typically shown on that view but can still be placed.
   defaults: Partial<Record<ViewId, { x: number; y: number; rot: number }>>;
@@ -51,9 +64,13 @@ export const SKU_TYPES: SkuType[] = [
     name: "MicroPulse 6-3 Grille",
     group: "front",
     mount: "Grille (pair, L/R of grille)",
+    shape: "bar",
+    segments: 6,
     spreadDeg: 90,
-    size: 24,
-    defaultColor: "blue",
+    lengthPx: 46,
+    defaultC1: "red",
+    defaultC2: "blue",
+    allowWhite: false,
     defaults: {
       front: { x: 40, y: 51, rot: 0 },
       hero: { x: 33, y: 52, rot: -20 },
@@ -65,9 +82,13 @@ export const SKU_TYPES: SkuType[] = [
     name: "MicroPulse Wide 9 Mirror",
     group: "front",
     mount: "Side mirrors (pair)",
+    shape: "wide",
+    segments: 3,
     spreadDeg: 100,
-    size: 22,
-    defaultColor: "red",
+    lengthPx: 32,
+    defaultC1: "red",
+    defaultC2: "blue",
+    allowWhite: false,
     defaults: {
       front: { x: 24, y: 40, rot: -30 },
       left: { x: 30, y: 41, rot: 200 },
@@ -81,9 +102,13 @@ export const SKU_TYPES: SkuType[] = [
     name: "SignalMaster / Visor (Front)",
     group: "front",
     mount: "Windshield visor, interior",
+    shape: "stick",
+    segments: 8,
     spreadDeg: 120,
-    size: 30,
-    defaultColor: "blue",
+    lengthPx: 90,
+    defaultC1: "red",
+    defaultC2: "blue",
+    allowWhite: false,
     defaults: {
       front: { x: 50, y: 30, rot: 0 },
       hero: { x: 45, y: 27, rot: -15 },
@@ -96,9 +121,13 @@ export const SKU_TYPES: SkuType[] = [
     name: "SignalMaster (Rear Hatch)",
     group: "hatch",
     mount: "Rear hatch glass, upper",
+    shape: "stick",
+    segments: 8,
     spreadDeg: 140,
-    size: 34,
-    defaultColor: "amber",
+    lengthPx: 96,
+    defaultC1: "amber",
+    defaultC2: "red",
+    allowWhite: false,
     defaults: {
       rear: { x: 50, y: 30, rot: 180 },
       hero: { x: 76, y: 28, rot: 160 },
@@ -110,9 +139,13 @@ export const SKU_TYPES: SkuType[] = [
     name: "MicroPulse 12-3 (Hatch)",
     group: "hatch",
     mount: "Rear hatch, mid glass",
+    shape: "bar",
+    segments: 6,
     spreadDeg: 110,
-    size: 26,
-    defaultColor: "red",
+    lengthPx: 44,
+    defaultC1: "red",
+    defaultC2: "blue",
+    allowWhite: false,
     defaults: {
       rear: { x: 38, y: 36, rot: 180 },
     },
@@ -123,9 +156,13 @@ export const SKU_TYPES: SkuType[] = [
     name: "MicroPulse Ultra (Hatch)",
     group: "hatch",
     mount: "Rear hatch, lower glass",
+    shape: "bar",
+    segments: 5,
     spreadDeg: 100,
-    size: 24,
-    defaultColor: "blue",
+    lengthPx: 40,
+    defaultC1: "blue",
+    defaultC2: "amber",
+    allowWhite: false,
     defaults: {
       rear: { x: 62, y: 36, rot: 180 },
     },
@@ -136,23 +173,31 @@ export const SKU_TYPES: SkuType[] = [
     name: "SpectraLux XSM2 Module",
     group: "hatch",
     mount: "Rear hatch corners (pair)",
+    shape: "module",
+    segments: 2,
     spreadDeg: 90,
-    size: 22,
-    defaultColor: "red",
+    lengthPx: 26,
+    defaultC1: "red",
+    defaultC2: "blue",
+    allowWhite: false,
     defaults: {
       rear: { x: 30, y: 42, rot: 200 },
     },
   },
-  // Siren / control — mounted, no external warning coverage, shown as equipment markers
+  // Siren / control — mounted equipment, no warning color
   {
     id: "pf200",
     sku: "PF200",
     name: "PathFinder PF200 Siren Amp",
     group: "siren",
     mount: "Cargo / under-hood (equipment)",
+    shape: "equip",
+    segments: 0,
     spreadDeg: 0,
-    size: 20,
-    defaultColor: "white",
+    lengthPx: 22,
+    defaultC1: "white",
+    defaultC2: "white",
+    allowWhite: true,
     defaults: {
       rear: { x: 50, y: 55, rot: 0 },
     },
@@ -163,9 +208,13 @@ export const SKU_TYPES: SkuType[] = [
     name: "ES100C Speaker",
     group: "siren",
     mount: "Behind grille / push bar",
+    shape: "equip",
+    segments: 0,
     spreadDeg: 0,
-    size: 20,
-    defaultColor: "white",
+    lengthPx: 22,
+    defaultC1: "white",
+    defaultC2: "white",
+    allowWhite: true,
     defaults: {
       front: { x: 50, y: 62, rot: 0 },
       hero: { x: 30, y: 60, rot: 0 },
@@ -177,9 +226,13 @@ export const SKU_TYPES: SkuType[] = [
     name: "ES100 Speaker Bracket",
     group: "siren",
     mount: "Speaker mount bracket",
+    shape: "equip",
+    segments: 0,
     spreadDeg: 0,
-    size: 18,
-    defaultColor: "white",
+    lengthPx: 20,
+    defaultC1: "white",
+    defaultC2: "white",
+    allowWhite: true,
     defaults: {
       front: { x: 56, y: 62, rot: 0 },
     },
@@ -190,9 +243,13 @@ export const SKU_TYPES: SkuType[] = [
     name: "OBD Interface (Ford)",
     group: "siren",
     mount: "Cab, OBD-II port",
+    shape: "equip",
+    segments: 0,
     spreadDeg: 0,
-    size: 18,
-    defaultColor: "white",
+    lengthPx: 20,
+    defaultC1: "white",
+    defaultC2: "white",
+    allowWhite: true,
     defaults: {
       front: { x: 42, y: 24, rot: 0 },
     },
@@ -203,9 +260,13 @@ export const SKU_TYPES: SkuType[] = [
     name: "Expansion Module 24",
     group: "siren",
     mount: "Cargo control area",
+    shape: "equip",
+    segments: 0,
     spreadDeg: 0,
-    size: 18,
-    defaultColor: "white",
+    lengthPx: 20,
+    defaultC1: "white",
+    defaultC2: "white",
+    allowWhite: true,
     defaults: {
       rear: { x: 60, y: 55, rot: 0 },
     },
@@ -238,16 +299,25 @@ export const LIGHT_COLOR_MAP: Record<LightColorId, LightColor> = Object.fromEntr
   LIGHT_COLORS.map((c) => [c.id, c]),
 ) as Record<LightColorId, LightColor>;
 
-// A placed node on a specific view
+// A placed node on a specific view. Warning heads are split dual-color
+// (color1 / color2); a single-color head simply has color1 === color2.
 export interface LightNode {
   id: string;
   view: ViewId;
   typeId: string; // references SkuType.id
-  color: LightColorId;
+  color1: LightColorId; // primary / left-half color
+  color2: LightColorId; // secondary / right-half color
   x: number; // percent 0-100
   y: number; // percent 0-100
   rotation: number;
   label: string; // the SKU shown on the marker
+}
+
+// Warning heads: red / blue / amber. White is reserved for takedown/scene
+// (equipment) heads only. Returns the colors selectable for a given SKU.
+export function allowedColors(sku: SkuType): LightColor[] {
+  if (sku.allowWhite) return LIGHT_COLORS.filter((c) => c.id === "white");
+  return LIGHT_COLORS.filter((c) => c.id === "red" || c.id === "blue" || c.id === "amber");
 }
 
 // Parameter toggles for the build baseline

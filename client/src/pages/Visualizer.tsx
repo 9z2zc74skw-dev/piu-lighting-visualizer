@@ -8,16 +8,17 @@ import {
   SKU_MAP,
   SkuGroup,
   GROUP_LABELS,
-  LIGHT_COLORS,
   LIGHT_COLOR_MAP,
   LightNode,
   LightColorId,
   BuildParams,
   DEFAULT_PARAMS,
   WAGONER_PRESET,
+  allowedColors,
 } from "@/lib/catalog";
 import { VehicleOverlays } from "@/components/VehicleOverlays";
 import { LightNodeMarker } from "@/components/LightNodeMarker";
+import { LightFixture } from "@/components/LightFixture";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -103,7 +104,8 @@ export default function Visualizer() {
         id: uid(typeId),
         view: activeView,
         typeId,
-        color: type.defaultColor,
+        color1: type.defaultC1,
+        color2: type.defaultC2,
         x: x ?? def?.x ?? 50,
         y: y ?? def?.y ?? 50,
         rotation: def?.rot ?? (activeView === "rear" ? 180 : 0),
@@ -136,8 +138,13 @@ export default function Visualizer() {
     setNodes((prev) =>
       prev.map((n) => (n.id === id ? { ...n, rotation: (n.rotation + 45) % 360 } : n)),
     );
-  const setNodeColor = (id: string, color: LightColorId) =>
-    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, color } : n)));
+  const setNodeColor1 = (id: string, color1: LightColorId) =>
+    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, color1 } : n)));
+  const setNodeColor2 = (id: string, color2: LightColorId) =>
+    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, color2 } : n)));
+  // Set both halves to the same color (single-color head)
+  const setNodeSolid = (id: string, color: LightColorId) =>
+    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, color1: color, color2: color } : n)));
 
   const clearView = () => {
     setNodes((prev) => prev.filter((n) => n.view !== activeView));
@@ -159,7 +166,8 @@ export default function Visualizer() {
           id: uid(item.typeId),
           view,
           typeId: item.typeId,
-          color: type.defaultColor,
+          color1: type.defaultC1,
+          color2: type.defaultC2,
           x: def?.x ?? 50,
           y: def?.y ?? 50,
           rotation: def?.rot ?? (view === "rear" ? 180 : 0),
@@ -328,8 +336,6 @@ export default function Visualizer() {
               </h3>
               <div className="space-y-2">
                 {SKU_TYPES.filter((t) => t.group === group).map((t) => {
-                  const isEquip = t.spreadDeg === 0;
-                  const c = LIGHT_COLOR_MAP[t.defaultColor];
                   return (
                     <div
                       key={t.id}
@@ -338,14 +344,9 @@ export default function Visualizer() {
                       className="group flex cursor-grab items-start gap-2.5 rounded-md border border-border bg-card p-2.5 hover-elevate active:cursor-grabbing"
                       data-testid={`palette-${t.id}`}
                     >
-                      <div
-                        className={`mt-0.5 h-6 w-6 shrink-0 border-2 ${isEquip ? "rounded-sm bg-secondary" : "rounded-full"}`}
-                        style={
-                          isEquip
-                            ? { borderColor: "rgba(255,255,255,0.5)" }
-                            : { backgroundColor: c.hex, borderColor: "rgba(255,255,255,0.8)", boxShadow: `0 0 8px ${c.glow}` }
-                        }
-                      />
+                      <div className="mt-1 flex h-6 w-8 shrink-0 items-center justify-center">
+                        <LightFixture sku={t} color1={t.defaultC1} color2={t.defaultC2} scale={0.7} />
+                      </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1">
                           <span className="text-sm font-semibold font-mono">{t.sku}</span>
@@ -516,21 +517,76 @@ export default function Visualizer() {
               </div>
               {SKU_MAP[selectedNode.typeId].spreadDeg > 0 && (
                 <>
-                  <p className="mt-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Color</p>
-                  <div className="flex flex-wrap gap-2">
-                    {LIGHT_COLORS.map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => setNodeColor(selectedNode.id, c.id)}
-                        className={`h-7 w-7 rounded-full border-2 transition-transform hover:scale-110 ${
-                          selectedNode.color === c.id ? "border-white ring-2 ring-white/40" : "border-white/40"
-                        }`}
-                        style={{ backgroundColor: c.hex, boxShadow: `0 0 8px ${c.glow}` }}
-                        title={c.name}
-                        data-testid={`color-${c.id}`}
-                      />
-                    ))}
-                  </div>
+                  {(() => {
+                    const sku = SKU_MAP[selectedNode.typeId];
+                    const colors = allowedColors(sku);
+                    const isSolid = selectedNode.color1 === selectedNode.color2;
+                    return (
+                      <>
+                        <div className="mt-3 mb-1.5 flex items-center justify-between">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Colors</p>
+                          <button
+                            onClick={() =>
+                              isSolid
+                                ? setNodeColor2(selectedNode.id, sku.defaultC2 !== selectedNode.color1 ? sku.defaultC2 : colors.find((c) => c.id !== selectedNode.color1)?.id ?? selectedNode.color1)
+                                : setNodeSolid(selectedNode.id, selectedNode.color1)
+                            }
+                            className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium hover-elevate"
+                            data-testid="button-toggle-split"
+                          >
+                            {isSolid ? "Make split" : "Make solid"}
+                          </button>
+                        </div>
+
+                        {/* Live preview of the head */}
+                        <div className="mb-2 flex items-center justify-center rounded-md border border-border bg-black/40 py-2">
+                          <LightFixture sku={sku} color1={selectedNode.color1} color2={selectedNode.color2} scale={1} />
+                        </div>
+
+                        {/* Primary / left color */}
+                        <p className="mb-1 text-[10px] font-medium text-muted-foreground">
+                          {isSolid ? "Color" : "Color 1 (left / odd LEDs)"}
+                        </p>
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          {colors.map((c) => (
+                            <button
+                              key={c.id}
+                              onClick={() =>
+                                isSolid ? setNodeSolid(selectedNode.id, c.id) : setNodeColor1(selectedNode.id, c.id)
+                              }
+                              className={`h-7 w-7 rounded-full border-2 transition-transform hover:scale-110 ${
+                                selectedNode.color1 === c.id ? "border-white ring-2 ring-white/40" : "border-white/40"
+                              }`}
+                              style={{ backgroundColor: c.hex, boxShadow: `0 0 8px ${c.glow}` }}
+                              title={c.name}
+                              data-testid={`color1-${c.id}`}
+                            />
+                          ))}
+                        </div>
+
+                        {/* Secondary / right color (split only) */}
+                        {!isSolid && (
+                          <>
+                            <p className="mb-1 text-[10px] font-medium text-muted-foreground">Color 2 (right / even LEDs)</p>
+                            <div className="flex flex-wrap gap-2">
+                              {colors.map((c) => (
+                                <button
+                                  key={c.id}
+                                  onClick={() => setNodeColor2(selectedNode.id, c.id)}
+                                  className={`h-7 w-7 rounded-full border-2 transition-transform hover:scale-110 ${
+                                    selectedNode.color2 === c.id ? "border-white ring-2 ring-white/40" : "border-white/40"
+                                  }`}
+                                  style={{ backgroundColor: c.hex, boxShadow: `0 0 8px ${c.glow}` }}
+                                  title={c.name}
+                                  data-testid={`color2-${c.id}`}
+                                />
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
                 </>
               )}
             </>
