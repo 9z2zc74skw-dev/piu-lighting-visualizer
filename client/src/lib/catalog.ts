@@ -99,10 +99,10 @@ export const SKU_TYPES: SkuType[] = [
     allowWhite: false,
     allowTriColor: true,
     defaults: {
-      front: { x: 24, y: 40, rot: -30 },
-      left: { x: 30, y: 41, rot: 200 },
-      right: { x: 30, y: 41, rot: 160 },
-      hero: { x: 44, y: 36, rot: -40 },
+      front: { x: 24, y: 40, rot: 0 },
+      left: { x: 30, y: 41, rot: 0 },
+      right: { x: 30, y: 41, rot: 0 },
+      hero: { x: 44, y: 36, rot: 0 },
     },
   },
   {
@@ -481,6 +481,8 @@ export interface AutoPlacement {
   view: ViewId;
   dx: number; // percent offset from the SKU default for this view
   dy: number;
+  absX?: number; // absolute x (percent) — overrides the SKU default x when set
+  absY?: number; // absolute y (percent) — overrides the SKU default y when set
 }
 
 export function planPlacements(match: MatchResult): AutoPlacement[] {
@@ -495,9 +497,12 @@ export function planPlacements(match: MatchResult): AutoPlacement[] {
     for (let i = 0; i < n; i++) out.push({ typeId, view: "front", dx: i === 0 ? -8 : 8, dy: 0 });
     return out;
   }
-  // Mirror heads (MPSW9): one on front (near a mirror) + one on each side view
+  // Mirror heads (MPSW9): a pair on the front view — one on each side mirror —
+  // plus one on each side view at the mirror.
   if (typeId === "mpsw9") {
-    out.push({ typeId, view: "front", dx: 0, dy: 0 });
+    // Front: driver + passenger mirrors. Absolute placement overrides default x.
+    out.push({ typeId, view: "front", dx: 0, dy: 0, absX: 30, absY: 36 });
+    out.push({ typeId, view: "front", dx: 0, dy: 0, absX: 70, absY: 36 });
     out.push({ typeId, view: "left", dx: 0, dy: 0 });
     out.push({ typeId, view: "right", dx: 0, dy: 0 });
     return out;
