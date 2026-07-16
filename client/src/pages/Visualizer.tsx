@@ -42,18 +42,17 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 
-import frontImg from "@/assets/piu_front.png";
-import rearImg from "@/assets/piu_rear.png";
-import leftImg from "@/assets/piu_left.png";
-import rightImg from "@/assets/piu_right.png";
-import heroImg from "@/assets/piu_hero.png";
-
+// Vehicle images live in the public folder and are referenced relative to the
+// deploy base (import.meta.env.BASE_URL === "./"). This avoids the bundler's
+// `new URL(asset, import.meta.url)` resolution, which breaks behind the deploy
+// proxy path and left the vehicle image blank.
+const ASSET_BASE = import.meta.env.BASE_URL;
 const VIEW_IMAGES: Record<ViewId, string> = {
-  front: frontImg,
-  rear: rearImg,
-  left: leftImg,
-  right: rightImg,
-  hero: heroImg,
+  front: `${ASSET_BASE}piu_front.png`,
+  rear: `${ASSET_BASE}piu_rear.png`,
+  left: `${ASSET_BASE}piu_left.png`,
+  right: `${ASSET_BASE}piu_right.png`,
+  hero: `${ASSET_BASE}piu_hero.png`,
 };
 
 const GROUP_ORDER: SkuGroup[] = ["front", "hatch", "siren"];
