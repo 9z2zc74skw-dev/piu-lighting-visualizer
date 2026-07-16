@@ -13,7 +13,10 @@ import {
   LightColorId,
   BuildParams,
   DEFAULT_PARAMS,
-  WAGONER_PRESET,
+  Orientation,
+  WAGONER_ESTIMATE,
+  autoBuildFromEstimate,
+  MatchResult,
   allowedColors,
 } from "@/lib/catalog";
 import { VehicleOverlays } from "@/components/VehicleOverlays";
@@ -87,6 +90,9 @@ export default function Visualizer() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCoverage, setShowCoverage] = useState(true);
   const [exporting, setExporting] = useState(false);
+  // Estimate match results (populated by auto-build) + whether the build is active
+  const [matches, setMatches] = useState<MatchResult[] | null>(null);
+  const [showMatchPanel, setShowMatchPanel] = useState(false);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const dragType = useRef<string | null>(null);
@@ -109,6 +115,7 @@ export default function Visualizer() {
         x: x ?? def?.x ?? 50,
         y: y ?? def?.y ?? 50,
         rotation: def?.rot ?? (activeView === "rear" ? 180 : 0),
+        orientation: type.defaultOrientation ?? "horizontal",
         label: type.sku,
       };
       setNodes((prev) => [...prev, node]);
@@ -138,6 +145,14 @@ export default function Visualizer() {
     setNodes((prev) =>
       prev.map((n) => (n.id === id ? { ...n, rotation: (n.rotation + 45) % 360 } : n)),
     );
+  const flipOrientation = (id: string) =>
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === id
+          ? { ...n, orientation: n.orientation === "vertical" ? "horizontal" : "vertical" }
+          : n,
+      ),
+    );
   const setNodeColor1 = (id: string, color1: LightColorId) =>
     setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, color1 } : n)));
   const setNodeColor2 = (id: string, color2: LightColorId) =>
@@ -155,32 +170,43 @@ export default function Visualizer() {
     setSelectedId(null);
   };
 
-  // Load the Wagoner build preset
-  const loadWagoner = () => {
+  // Auto-build directly from the QuickBooks estimate: match each line to a
+  // catalog SKU, place a node per unit (with color + orientation from the SKU),
+  // and derive build params from the memo.
+  const buildFromEstimate = () => {
+    const est = WAGONER_ESTIMATE;
+    const { placements, matches: matchResults, params: builtParams } = autoBuildFromEstimate(est);
     const placed: LightNode[] = [];
-    for (const item of WAGONER_PRESET.place) {
-      const type = SKU_MAP[item.typeId];
-      for (const view of item.views) {
-        const def = type.defaults[view];
-        placed.push({
-          id: uid(item.typeId),
-          view,
-          typeId: item.typeId,
-          color1: type.defaultC1,
-          color2: type.defaultC2,
-          x: def?.x ?? 50,
-          y: def?.y ?? 50,
-          rotation: def?.rot ?? (view === "rear" ? 180 : 0),
-          label: type.sku,
-        });
-      }
+    for (const p of placements) {
+      const type = SKU_MAP[p.typeId];
+      const def = type.defaults[p.view];
+      const c1 = p.colorOverride?.c1 ?? type.defaultC1;
+      const c2 = p.colorOverride?.c2 ?? type.defaultC2;
+      placed.push({
+        id: uid(p.typeId),
+        view: p.view,
+        typeId: p.typeId,
+        color1: c1,
+        color2: c2,
+        x: Math.max(2, Math.min(98, (def?.x ?? 50) + p.dx)),
+        y: Math.max(2, Math.min(98, (def?.y ?? 50) + p.dy)),
+        rotation: def?.rot ?? (p.view === "rear" ? 180 : 0),
+        orientation: type.defaultOrientation ?? "horizontal",
+        label: type.sku,
+      });
     }
     setNodes(placed);
-    setParams(WAGONER_PRESET.params);
+    setParams(builtParams);
+    setMatches(matchResults);
+    setShowMatchPanel(true);
     setSelectedId(null);
+    const lit = placed.length;
+    const matched = matchResults.filter((m) => m.typeId).length;
     toast({
-      title: "Wagoner build loaded",
-      description: `Est. 1233 · ${placed.length} components placed · push bar off.`,
+      title: `Auto-built from Est. ${est.docNumber}`,
+      description: `${matched} lighting SKUs matched · ${lit} nodes placed · ${
+        builtParams.pushBar ? "push bar on" : "slicktop, no push bar"
+      }.`,
     });
   };
 
@@ -276,8 +302,67 @@ export default function Visualizer() {
         );
       }
 
+      // Estimate summary page (only when an auto-build is active)
+      if (matches) {
+        pdf.addPage();
+        pdf.setFillColor(15, 17, 21);
+        pdf.rect(0, 0, pageW, pageH, "F");
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(16);
+        pdf.text("Estimate Build Summary", 40, 40);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(11);
+        pdf.setTextColor(180, 190, 205);
+        pdf.text(
+          `Est. ${WAGONER_ESTIMATE.docNumber}  ·  ${WAGONER_ESTIMATE.agency}  ·  ${WAGONER_ESTIMATE.customer}`,
+          40,
+          58,
+        );
+
+        // Memo / build-note banner
+        pdf.setFillColor(60, 48, 10);
+        pdf.rect(40, 70, pageW - 80, 26, "F");
+        pdf.setTextColor(245, 210, 130);
+        pdf.setFontSize(9.5);
+        pdf.text(`Build note: ${WAGONER_ESTIMATE.memo}`, 48, 87, { maxWidth: pageW - 96 });
+
+        // Match table header
+        let y = 116;
+        pdf.setTextColor(150, 160, 175);
+        pdf.setFontSize(8);
+        pdf.text("QuickBooks Line Item", 40, y);
+        pdf.text("Qty", pageW - 200, y);
+        pdf.text("Mapped SKU / Note", pageW - 170, y);
+        pdf.setDrawColor(70, 78, 92);
+        pdf.line(40, y + 4, pageW - 40, y + 4);
+        y += 16;
+        pdf.setFontSize(8);
+        for (const m of matches) {
+          if (y > pageH - 60) {
+            pdf.addPage();
+            pdf.setFillColor(15, 17, 21);
+            pdf.rect(0, 0, pageW, pageH, "F");
+            y = 50;
+          }
+          pdf.setTextColor(m.typeId ? 215 : 130, m.typeId ? 222 : 138, m.typeId ? 232 : 150);
+          pdf.text(m.itemName, 40, y, { maxWidth: pageW - 230 });
+          pdf.text(String(m.qty), pageW - 200, y);
+          pdf.setTextColor(m.typeId ? 120 : 120, m.typeId ? 200 : 128, m.typeId ? 255 : 140);
+          pdf.text(m.typeId ? SKU_MAP[m.typeId].sku : "reference only", pageW - 170, y);
+          if (m.note) {
+            y += 11;
+            pdf.setTextColor(240, 190, 110);
+            const noteLines = pdf.splitTextToSize(`[!] ${m.note}`, 150) as string[];
+            pdf.text(noteLines, pageW - 170, y);
+            y += (noteLines.length - 1) * 10;
+          }
+          y += 15;
+        }
+      }
+
       pdf.save(`PIU_Lighting_Coverage_SignOff.pdf`);
-      toast({ title: "PDF exported", description: "5-view sign-off sheet saved." });
+      toast({ title: "PDF exported", description: "View sheets + estimate summary saved." });
     } catch (err) {
       toast({ title: "Export failed", description: String(err), variant: "destructive" });
     } finally {
@@ -304,8 +389,8 @@ export default function Visualizer() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={loadWagoner} data-testid="button-load-wagoner">
-            <PackageOpen className="mr-1.5 h-4 w-4" /> Load Wagoner Build
+          <Button variant="secondary" size="sm" onClick={buildFromEstimate} data-testid="button-load-wagoner">
+            <PackageOpen className="mr-1.5 h-4 w-4" /> Auto-Build from QuickBooks (Est. 1233)
           </Button>
           <Button variant="outline" size="sm" onClick={exportPng} disabled={exporting} data-testid="button-export-png">
             <Download className="mr-1.5 h-4 w-4" /> PNG
@@ -430,6 +515,7 @@ export default function Visualizer() {
                 onMove={moveNode}
                 onRemove={removeNode}
                 onRotate={rotateNode}
+                onFlipOrientation={flipOrientation}
               />
             ))}
             <div className="pointer-events-none absolute bottom-2 right-3 text-[10px] font-medium text-white/50">
@@ -502,6 +588,55 @@ export default function Visualizer() {
             </div>
           </div>
 
+          {showMatchPanel && matches && (
+            <>
+              <Separator className="my-4" />
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Est. {WAGONER_ESTIMATE.docNumber} · {WAGONER_ESTIMATE.agency}
+                </h2>
+                <button
+                  onClick={() => setShowMatchPanel(false)}
+                  className="text-[10px] text-muted-foreground hover:text-foreground"
+                  data-testid="button-hide-matches"
+                >
+                  hide
+                </button>
+              </div>
+
+              {/* Memo / build-note banner */}
+              <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] leading-snug text-amber-200">
+                <span className="font-semibold">Build note:</span> {WAGONER_ESTIMATE.memo}
+              </div>
+
+              <div className="space-y-1 text-[11px]">
+                {matches.map((m, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-start justify-between gap-2 rounded border px-2 py-1 ${
+                      m.typeId ? "border-border bg-card" : "border-transparent opacity-55"
+                    }`}
+                    data-testid={`match-${i}`}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-mono">{m.itemName}</div>
+                      {m.note && <div className="text-[10px] text-amber-300">⚠ {m.note}</div>}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="text-muted-foreground">×{m.qty}</div>
+                      <div className={m.typeId ? "font-medium text-primary" : "text-muted-foreground"}>
+                        {m.typeId ? SKU_MAP[m.typeId].sku : "not placed"}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                Lighting SKUs are auto-placed as draggable nodes. Non-lighting lines (consoles, mounts, radar, labor) are listed for reference only.
+              </p>
+            </>
+          )}
+
           {selectedNode && (
             <>
               <Separator className="my-4" />
@@ -512,7 +647,21 @@ export default function Visualizer() {
                 <div className="mb-1 font-semibold">{SKU_MAP[selectedNode.typeId].name}</div>
                 <div className="text-muted-foreground">{SKU_MAP[selectedNode.typeId].mount}</div>
                 {SKU_MAP[selectedNode.typeId].spreadDeg > 0 && (
-                  <div className="mt-0.5 text-muted-foreground">Rotation: {selectedNode.rotation}°</div>
+                  <>
+                    <div className="mt-0.5 text-muted-foreground">Rotation: {selectedNode.rotation}°</div>
+                    <div className="mt-1.5 flex items-center justify-between">
+                      <span className="text-muted-foreground">
+                        Orientation: <span className="font-medium text-foreground">{selectedNode.orientation}</span>
+                      </span>
+                      <button
+                        onClick={() => flipOrientation(selectedNode.id)}
+                        className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium hover-elevate"
+                        data-testid="button-flip-orientation"
+                      >
+                        {selectedNode.orientation === "vertical" ? "Make horizontal" : "Make vertical"}
+                      </button>
+                    </div>
+                  </>
                 )}
               </div>
               {SKU_MAP[selectedNode.typeId].spreadDeg > 0 && (

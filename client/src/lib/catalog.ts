@@ -36,6 +36,11 @@ export const GROUP_LABELS: Record<SkuGroup, string> = {
 // scene = takedown/scene flood (white only)
 export type FixtureShape = "bar" | "wide" | "stick" | "module" | "equip" | "scene";
 
+// Mounting orientation of a fixture's long axis. Horizontal = across (typical
+// grille/visor); vertical = up/down (e.g. MPS1200-series on the rear hatch
+// pillars / plate sides).
+export type Orientation = "horizontal" | "vertical";
+
 // A catalog SKU (product) that can be dropped as a node
 export interface SkuType {
   id: string; // internal id
@@ -50,6 +55,8 @@ export interface SkuType {
   defaultC1: LightColorId; // default primary color
   defaultC2: LightColorId; // default secondary color (split heads)
   allowWhite: boolean; // whether white is a valid color for this head
+  allowTriColor?: boolean; // RBW/BRW heads: allow white as a selectable warning color
+  defaultOrientation?: Orientation; // how it mounts by default (defaults to horizontal)
   // suggested default drop position per view (percent of stage). If a view is
   // missing, the SKU is not typically shown on that view but can still be placed.
   defaults: Partial<Record<ViewId, { x: number; y: number; rot: number }>>;
@@ -71,6 +78,7 @@ export const SKU_TYPES: SkuType[] = [
     defaultC1: "red",
     defaultC2: "blue",
     allowWhite: false,
+    allowTriColor: true,
     defaults: {
       front: { x: 40, y: 51, rot: 0 },
       hero: { x: 33, y: 52, rot: -20 },
@@ -89,6 +97,7 @@ export const SKU_TYPES: SkuType[] = [
     defaultC1: "red",
     defaultC2: "blue",
     allowWhite: false,
+    allowTriColor: true,
     defaults: {
       front: { x: 24, y: 40, rot: -30 },
       left: { x: 30, y: 41, rot: 200 },
@@ -138,7 +147,7 @@ export const SKU_TYPES: SkuType[] = [
     sku: "MPS123",
     name: "MicroPulse 12-3 (Hatch)",
     group: "hatch",
-    mount: "Rear hatch, mid glass",
+    mount: "Rear hatch pillars (vertical, plate sides)",
     shape: "bar",
     segments: 6,
     spreadDeg: 110,
@@ -146,8 +155,10 @@ export const SKU_TYPES: SkuType[] = [
     defaultC1: "red",
     defaultC2: "blue",
     allowWhite: false,
+    allowTriColor: true,
+    defaultOrientation: "vertical",
     defaults: {
-      rear: { x: 38, y: 36, rot: 180 },
+      rear: { x: 26, y: 40, rot: 180 },
     },
   },
   {
@@ -177,9 +188,10 @@ export const SKU_TYPES: SkuType[] = [
     segments: 2,
     spreadDeg: 90,
     lengthPx: 26,
-    defaultC1: "red",
-    defaultC2: "blue",
+    defaultC1: "blue",
+    defaultC2: "red",
     allowWhite: false,
+    allowTriColor: true,
     defaults: {
       rear: { x: 30, y: 42, rot: 200 },
     },
@@ -310,14 +322,18 @@ export interface LightNode {
   x: number; // percent 0-100
   y: number; // percent 0-100
   rotation: number;
+  orientation: Orientation; // horizontal (long axis across) or vertical (long axis up/down)
   label: string; // the SKU shown on the marker
 }
 
 // Warning heads: red / blue / amber. White is reserved for takedown/scene
-// (equipment) heads only. Returns the colors selectable for a given SKU.
+// (equipment) heads, plus tri-color RBW/BRW heads which explicitly allow it.
 export function allowedColors(sku: SkuType): LightColor[] {
   if (sku.allowWhite) return LIGHT_COLORS.filter((c) => c.id === "white");
-  return LIGHT_COLORS.filter((c) => c.id === "red" || c.id === "blue" || c.id === "amber");
+  const ids: LightColorId[] = sku.allowTriColor
+    ? ["red", "blue", "amber", "white"]
+    : ["red", "blue", "amber"];
+  return LIGHT_COLORS.filter((c) => ids.includes(c.id));
 }
 
 // Parameter toggles for the build baseline
@@ -333,30 +349,194 @@ export const DEFAULT_PARAMS: BuildParams = {
   rearHatchLights: false,
 };
 
-// ---- Wagoner PIU preset (Est. 1233) ----
-// Push bar OFF (Wagoner exception), all SKUs placed at their default positions.
-export interface Preset {
-  name: string;
-  params: BuildParams;
-  // which SKUs to place and on which of their default views
-  place: { typeId: string; views: ViewId[] }[];
+// ============================================================================
+// QuickBooks estimate model + auto-build
+// ============================================================================
+
+// A line item as pulled from a QuickBooks estimate
+export interface EstimateLine {
+  itemName: string; // QB ItemRef name, e.g. "MPS63U-RBW" or "LIGHTS:416300-R"
+  description: string;
+  qty: number;
+  amount: number;
 }
 
-export const WAGONER_PRESET: Preset = {
-  name: "Wagoner PIU — Est. 1233",
-  params: { pushBar: false, dashLighting: true, rearHatchLights: true },
-  place: [
-    { typeId: "mps63", views: ["front"] },
-    { typeId: "mpsw9", views: ["front", "left", "right"] },
-    { typeId: "sifmjs", views: ["front"] },
-    { typeId: "sifmjh", views: ["rear"] },
-    { typeId: "mps123", views: ["rear"] },
-    { typeId: "fs416300", views: ["rear"] },
-    { typeId: "xsm2", views: ["rear"] },
-    { typeId: "es100c", views: ["front"] },
-    { typeId: "esbl", views: ["front"] },
-    { typeId: "pf200", views: ["rear"] },
-    { typeId: "expmod24", views: ["rear"] },
-    { typeId: "obdford", views: ["front"] },
+export interface Estimate {
+  docNumber: string;
+  customer: string;
+  agency: string;
+  memo: string;
+  total: number;
+  lines: EstimateLine[];
+}
+
+// ---- Wagoner PD estimate #1233 (pulled live from QuickBooks, Id 2439) ----
+export const WAGONER_ESTIMATE: Estimate = {
+  docNumber: "1233",
+  customer: "Chief Bob Haley",
+  agency: "Wagoner Police Department",
+  memo: "Assumes 26 Ford PIU. No rear stick. No cage. Slicktop.",
+  total: 11670.72,
+  lines: [
+    { itemName: "MPS63U-RBW", description: "MPS63U-RBW (grille)", qty: 4, amount: 556 },
+    { itemName: "LIGHTS:MPSW9-RBW", description: "MPSW9 Wide angle tri color mirror light", qty: 2, amount: 374.88 },
+    { itemName: "BRACKETS:FPIU20MIR", description: "FPIU20MIR-FORD Mirror mount (both sides)", qty: 1, amount: 74.7 },
+    { itemName: "LIGHTS:SIFMJS-FPIU20-P3", description: "FedSig Ford PIU Tri-color visor(s)", qty: 1, amount: 1975 },
+    { itemName: "PF200", description: "PF200 Siren controller (included)", qty: 1, amount: 0 },
+    { itemName: "ES100C", description: "DynaMax ES100C Speaker/100 W (included)", qty: 1, amount: 0 },
+    { itemName: "BRACKETS:ESBL-FPIU20", description: "ESBL-FPIU20 combo bracket", qty: 1, amount: 0 },
+    { itemName: "OBDFORD", description: "OBDFORD", qty: 1, amount: 185.29 },
+    { itemName: "EXPMOD24", description: "EXPMOD24 24 port expansion module", qty: 1, amount: 244.07 },
+    { itemName: "Jotto:425-6505", description: "425-6505 Jotto desk contour console w/o printer", qty: 1, amount: 575.1 },
+    { itemName: "Jotto:425-6287", description: "425-6287 Jotto PF-200 plate", qty: 1, amount: 49.94 },
+    { itemName: "Jotto:425-6619", description: "425-6619 Harris XG-75M plate", qty: 1, amount: 49.49 },
+    { itemName: "Services", description: "Ram Intelliskin iPad mount", qty: 1, amount: 391.77 },
+    { itemName: "Jotto:475-0653", description: "475-0653 Jotto GR6 Dual gun mount No partition", qty: 1, amount: 688.44 },
+    { itemName: "XSM2-BRW-US", description: "XSM2-BRW-US", qty: 2, amount: 389.54 },
+    { itemName: "LIGHTS:Fed Sig COM9-B Interior Light", description: "Fed Sig COM9-B Interior Light", qty: 1, amount: 94.1 },
+    { itemName: "SIFMJH-FPIU20-P3", description: "SIFMJH-FPIU20-P3 FIU Rear Hatch", qty: 1, amount: 977 },
+    { itemName: "416300-B", description: "416300-B Blue 1 inch rear hatch light", qty: 2, amount: 154.2 },
+    { itemName: "LIGHTS:416300-R", description: "416300-R Red 1 inch rear hatch light", qty: 2, amount: 154.2 },
+    { itemName: "MPS123U-RBW", description: "MPS123U-RBW (rear hatch)", qty: 2, amount: 298 },
+    { itemName: "RADAR:DECATUR G3", description: "DECATUR G3", qty: 1, amount: 2689 },
+    { itemName: "Labor", description: "Labor/installation/supplies", qty: 1, amount: 1750 },
   ],
 };
+
+// The result of matching one estimate line to the catalog
+export interface MatchResult {
+  itemName: string;
+  description: string;
+  qty: number;
+  typeId: string | null; // catalog SKU id, or null if unmatched/non-lighting
+  colorOverride?: { c1: LightColorId; c2: LightColorId };
+  note?: string; // e.g. conflict flag
+}
+
+// Normalize a QB item name: strip the "CATEGORY:" prefix and uppercase.
+function baseName(itemName: string): string {
+  const parts = itemName.split(":");
+  return parts[parts.length - 1].trim().toUpperCase();
+}
+
+// Map a QuickBooks estimate line to a catalog SKU id + color override.
+// Handles color suffixes (-RBW, -BRW, -B, -R) and category prefixes.
+export function matchLine(line: EstimateLine): MatchResult {
+  const bn = baseName(line.itemName);
+  const res: MatchResult = {
+    itemName: line.itemName,
+    description: line.description,
+    qty: line.qty,
+    typeId: null,
+  };
+
+  // Warning + equipment SKU matching by prefix of the base part number
+  if (bn.startsWith("MPS63")) {
+    res.typeId = "mps63";
+    res.colorOverride = { c1: "red", c2: "blue" }; // RBW tri (white selectable)
+  } else if (bn.startsWith("MPSW9")) {
+    res.typeId = "mpsw9";
+    res.colorOverride = { c1: "red", c2: "blue" };
+  } else if (bn.startsWith("SIFMJS")) {
+    res.typeId = "sifmjs";
+    res.colorOverride = { c1: "red", c2: "blue" };
+  } else if (bn.startsWith("SIFMJH")) {
+    res.typeId = "sifmjh";
+    res.colorOverride = { c1: "amber", c2: "red" };
+    res.note = "On quote, but memo says 'no rear stick' - verify";
+  } else if (bn.startsWith("MPS123")) {
+    res.typeId = "mps123";
+    res.colorOverride = { c1: "red", c2: "blue" };
+  } else if (bn.startsWith("XSM2")) {
+    res.typeId = "xsm2";
+    res.colorOverride = { c1: "blue", c2: "red" }; // BRW
+  } else if (bn.startsWith("416300")) {
+    res.typeId = "fs416300";
+    // color from suffix: -B blue, -R red, -A amber
+    if (bn.endsWith("-B")) res.colorOverride = { c1: "blue", c2: "blue" };
+    else if (bn.endsWith("-R")) res.colorOverride = { c1: "red", c2: "red" };
+    else if (bn.endsWith("-A")) res.colorOverride = { c1: "amber", c2: "amber" };
+  } else if (bn === "PF200") {
+    res.typeId = "pf200";
+  } else if (bn === "ES100C") {
+    res.typeId = "es100c";
+  } else if (bn.startsWith("ESBL")) {
+    res.typeId = "esbl";
+  } else if (bn === "OBDFORD") {
+    res.typeId = "obdford";
+  } else if (bn === "EXPMOD24") {
+    res.typeId = "expmod24";
+  }
+  // Everything else (Jotto consoles, plates, gun mount, iPad mount, COM9-B
+  // interior, Decatur radar, labor, mirror bracket) is non-visualized — listed
+  // on the sheet but not placed as a light node.
+  return res;
+}
+
+// Which view(s) a matched SKU auto-places on, and small offsets so multiple
+// units of the same SKU don't stack exactly. Returns one placement per unit,
+// capped so pairs render as L/R and larger quantities fan out sensibly.
+export interface AutoPlacement {
+  typeId: string;
+  view: ViewId;
+  dx: number; // percent offset from the SKU default for this view
+  dy: number;
+}
+
+export function planPlacements(match: MatchResult): AutoPlacement[] {
+  const { typeId, qty } = match;
+  if (!typeId) return [];
+  const sku = SKU_MAP[typeId];
+  const out: AutoPlacement[] = [];
+
+  // Grille bars (MPS63): a pair on the front, L/R of grille
+  if (typeId === "mps63") {
+    const n = Math.min(qty, 2);
+    for (let i = 0; i < n; i++) out.push({ typeId, view: "front", dx: i === 0 ? -8 : 8, dy: 0 });
+    return out;
+  }
+  // Mirror heads (MPSW9): one on front (near a mirror) + one on each side view
+  if (typeId === "mpsw9") {
+    out.push({ typeId, view: "front", dx: 0, dy: 0 });
+    out.push({ typeId, view: "left", dx: 0, dy: 0 });
+    out.push({ typeId, view: "right", dx: 0, dy: 0 });
+    return out;
+  }
+  // Rear hatch pairs/singles: fan across the glass
+  if (typeId === "mps123" || typeId === "fs416300" || typeId === "xsm2") {
+    const n = Math.max(1, Math.min(qty, 2));
+    for (let i = 0; i < n; i++) {
+      const dx = n === 1 ? 0 : i === 0 ? -12 : 12;
+      out.push({ typeId, view: "rear", dx, dy: 0 });
+    }
+    return out;
+  }
+  // Single-mount items: place one at the default view (first defined default)
+  const view = (Object.keys(sku.defaults)[0] as ViewId) ?? "front";
+  out.push({ typeId, view, dx: 0, dy: 0 });
+  return out;
+}
+
+// Build a full auto-placement plan + parameter set from an estimate.
+export function autoBuildFromEstimate(est: Estimate): {
+  placements: (AutoPlacement & { colorOverride?: { c1: LightColorId; c2: LightColorId } })[];
+  matches: MatchResult[];
+  params: BuildParams;
+} {
+  const matches = est.lines.map(matchLine);
+  const placements: (AutoPlacement & { colorOverride?: { c1: LightColorId; c2: LightColorId } })[] = [];
+  for (const m of matches) {
+    for (const p of planPlacements(m)) {
+      placements.push({ ...p, colorOverride: m.colorOverride });
+    }
+  }
+  // Params derived from the build: Wagoner is slicktop + no push bar; it does
+  // run interior dash + rear hatch warning.
+  const memo = est.memo.toLowerCase();
+  const params: BuildParams = {
+    pushBar: !memo.includes("slicktop") && !memo.includes("no push"),
+    dashLighting: true,
+    rearHatchLights: true,
+  };
+  return { placements, matches, params };
+}
