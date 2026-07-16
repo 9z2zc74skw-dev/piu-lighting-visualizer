@@ -345,7 +345,7 @@ export interface BuildParams {
 }
 
 export const DEFAULT_PARAMS: BuildParams = {
-  pushBar: true, // baseline includes a push bar on most builds
+  pushBar: false, // Wagoner is slicktop — no push bar
   dashLighting: false,
   rearHatchLights: false,
   colorScheme: "rb", // OK depts (e.g. Wagoner) typically run Red/Blue
