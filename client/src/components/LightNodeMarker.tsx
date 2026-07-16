@@ -6,7 +6,6 @@ import { X, RotateCw, FlipVertical2 } from "lucide-react";
 interface Props {
   node: LightNode;
   selected: boolean;
-  showCoverage: boolean;
   stageRef: React.RefObject<HTMLDivElement>;
   onSelect: (id: string) => void;
   onMove: (id: string, x: number, y: number) => void;
@@ -18,7 +17,6 @@ interface Props {
 export function LightNodeMarker({
   node,
   selected,
-  showCoverage,
   stageRef,
   onSelect,
   onMove,
@@ -64,43 +62,6 @@ export function LightNodeMarker({
       onClick={(e) => e.stopPropagation()}
       data-testid={`node-${node.id}`}
     >
-      {/* coverage cone (warning lights only) — split gradient of both colors */}
-      {showCoverage && !isEquipment && (
-        <div
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-          style={{ transform: `translate(-50%,-50%) rotate(${bodyRot}deg)` }}
-        >
-          <div
-            style={{
-              width: 0,
-              height: 0,
-              borderLeft: `${type.spreadDeg / 3}px solid transparent`,
-              borderRight: `${type.spreadDeg / 3}px solid transparent`,
-              borderBottom: `${type.spreadDeg / 1.6}px solid ${c1.glow}`,
-              opacity: 0.32,
-              transformOrigin: "top center",
-              filter: "blur(1.5px)",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: 0,
-              height: 0,
-              borderLeft: `${type.spreadDeg / 3}px solid transparent`,
-              borderRight: `${type.spreadDeg / 3}px solid transparent`,
-              borderBottom: `${type.spreadDeg / 1.6}px solid ${c2.glow}`,
-              opacity: 0.22,
-              transformOrigin: "top center",
-              transform: "scaleX(0.5) translateX(100%)",
-              filter: "blur(1.5px)",
-            }}
-          />
-        </div>
-      )}
-
       {/* the fixture body */}
       <div
         onPointerDown={handlePointerDown}

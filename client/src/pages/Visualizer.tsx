@@ -18,6 +18,9 @@ import {
   autoBuildFromEstimate,
   MatchResult,
   allowedColors,
+  ColorSchemeId,
+  COLOR_SCHEMES,
+  schemeColors,
 } from "@/lib/catalog";
 import { VehicleOverlays } from "@/components/VehicleOverlays";
 import { LightNodeMarker } from "@/components/LightNodeMarker";
@@ -31,8 +34,6 @@ import {
   Shield,
   Download,
   FileText,
-  Eye,
-  EyeOff,
   Trash2,
   Plus,
   Sun,
@@ -88,7 +89,6 @@ export default function Visualizer() {
   const [params, setParams] = useState<BuildParams>(DEFAULT_PARAMS);
   const [nodes, setNodes] = useState<LightNode[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showCoverage, setShowCoverage] = useState(true);
   const [exporting, setExporting] = useState(false);
   // Estimate match results (populated by auto-build) + whether the build is active
   const [matches, setMatches] = useState<MatchResult[] | null>(null);
@@ -106,12 +106,15 @@ export default function Visualizer() {
     (typeId: string, x?: number, y?: number) => {
       const type = SKU_MAP[typeId];
       const def = type.defaults[activeView];
+      // Tri-color heads adopt the current department run scheme; others use their
+      // own default colors.
+      const run = schemeColors(params.colorScheme);
       const node: LightNode = {
         id: uid(typeId),
         view: activeView,
         typeId,
-        color1: type.defaultC1,
-        color2: type.defaultC2,
+        color1: type.allowTriColor ? run.c1 : type.defaultC1,
+        color2: type.allowTriColor ? run.c2 : type.defaultC2,
         x: x ?? def?.x ?? 50,
         y: y ?? def?.y ?? 50,
         rotation: def?.rot ?? (activeView === "rear" ? 180 : 0),
@@ -121,7 +124,7 @@ export default function Visualizer() {
       setNodes((prev) => [...prev, node]);
       setSelectedId(node.id);
     },
-    [activeView],
+    [activeView, params.colorScheme],
   );
 
   // Drag from palette — drop lands where released, snapped near default if close-ish
@@ -153,6 +156,20 @@ export default function Visualizer() {
           : n,
       ),
     );
+  // Change the department run scheme: recolor every tri-color-capable head to
+  // the new scheme's two run colors. Fixed-color lights (solid 416300, amber
+  // rear stick, equipment) are left untouched.
+  const changeColorScheme = (scheme: ColorSchemeId) => {
+    const run = schemeColors(scheme);
+    setParams((p) => ({ ...p, colorScheme: scheme }));
+    setNodes((prev) =>
+      prev.map((n) =>
+        SKU_MAP[n.typeId]?.allowTriColor
+          ? { ...n, color1: run.c1, color2: run.c2 }
+          : n,
+      ),
+    );
+  };
   const setNodeColor1 = (id: string, color1: LightColorId) =>
     setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, color1 } : n)));
   const setNodeColor2 = (id: string, color2: LightColorId) =>
@@ -319,16 +336,21 @@ export default function Visualizer() {
           40,
           58,
         );
+        const schemeLabel =
+          COLOR_SCHEMES.find((s) => s.id === params.colorScheme)?.label ?? params.colorScheme;
+        pdf.setFontSize(9.5);
+        pdf.setTextColor(150, 160, 175);
+        pdf.text(`Run scheme: ${schemeLabel} (tri-color heads)`, 40, 68);
 
         // Memo / build-note banner
         pdf.setFillColor(60, 48, 10);
-        pdf.rect(40, 70, pageW - 80, 26, "F");
+        pdf.rect(40, 78, pageW - 80, 26, "F");
         pdf.setTextColor(245, 210, 130);
         pdf.setFontSize(9.5);
-        pdf.text(`Build note: ${WAGONER_ESTIMATE.memo}`, 48, 87, { maxWidth: pageW - 96 });
+        pdf.text(`Build note: ${WAGONER_ESTIMATE.memo}`, 48, 95, { maxWidth: pageW - 96 });
 
         // Match table header
-        let y = 116;
+        let y = 124;
         pdf.setTextColor(150, 160, 175);
         pdf.setFontSize(8);
         pdf.text("QuickBooks Line Item", 40, y);
@@ -509,7 +531,6 @@ export default function Visualizer() {
                 key={n.id}
                 node={n}
                 selected={n.id === selectedId}
-                showCoverage={showCoverage}
                 stageRef={stageRef}
                 onSelect={setSelectedId}
                 onMove={moveNode}
@@ -524,10 +545,6 @@ export default function Visualizer() {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2" data-export-hide>
-            <Button variant="outline" size="sm" onClick={() => setShowCoverage((s) => !s)} data-testid="button-toggle-coverage">
-              {showCoverage ? <EyeOff className="mr-1.5 h-4 w-4" /> : <Eye className="mr-1.5 h-4 w-4" />}
-              {showCoverage ? "Hide" : "Show"} Coverage
-            </Button>
             <Button variant="outline" size="sm" onClick={clearView} data-testid="button-clear-view">
               <Trash2 className="mr-1.5 h-4 w-4" /> Clear View
             </Button>
@@ -539,6 +556,44 @@ export default function Visualizer() {
 
         {/* Right params panel */}
         <aside className="w-full shrink-0 border-t border-border p-4 lg:w-72 lg:border-t-0 lg:border-l lg:overflow-y-auto" data-export-hide>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Department Color Scheme
+          </h2>
+          <p className="mb-2 text-[11px] leading-snug text-muted-foreground">
+            Run pattern for tri-color heads. OK depts usually run Red/Blue; AR usually Blue/White.
+          </p>
+          <div className="mb-2 grid grid-cols-2 gap-1.5">
+            {COLOR_SCHEMES.map((s) => {
+              const active = params.colorScheme === s.id;
+              const swatches = [s.c1, s.c2, ...(s.c3 ? [s.c3] : [])];
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => changeColorScheme(s.id)}
+                  data-testid={`button-scheme-${s.id}`}
+                  className={`flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[11px] font-medium transition-colors ${
+                    active
+                      ? "border-white bg-white/10 text-white"
+                      : "border-border text-muted-foreground hover:border-white/40"
+                  }`}
+                >
+                  <span className="flex">
+                    {swatches.map((c, i) => (
+                      <span
+                        key={i}
+                        className="h-3 w-3 rounded-full ring-1 ring-black/40"
+                        style={{ background: LIGHT_COLOR_MAP[c].glow, marginLeft: i ? -4 : 0 }}
+                      />
+                    ))}
+                  </span>
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <Separator className="my-4" />
+
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Build Parameters
           </h2>
@@ -569,7 +624,7 @@ export default function Visualizer() {
           <Separator className="my-4" />
 
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Coverage Summary
+            Placement Summary
           </h2>
           <div className="space-y-1.5 text-xs">
             {VIEWS.map((v) => {

@@ -341,12 +341,14 @@ export interface BuildParams {
   pushBar: boolean;
   dashLighting: boolean;
   rearHatchLights: boolean;
+  colorScheme: ColorSchemeId; // department run scheme for tri-color heads
 }
 
 export const DEFAULT_PARAMS: BuildParams = {
   pushBar: true, // baseline includes a push bar on most builds
   dashLighting: false,
   rearHatchLights: false,
+  colorScheme: "rb", // OK depts (e.g. Wagoner) typically run Red/Blue
 };
 
 // ============================================================================
@@ -365,9 +367,18 @@ export interface Estimate {
   docNumber: string;
   customer: string;
   agency: string;
+  state?: string; // 2-letter state, drives the default run scheme (OK=R/B, AR=B/W)
   memo: string;
   total: number;
   lines: EstimateLine[];
+}
+
+// Default department run scheme by state: Oklahoma runs Red/Blue, Arkansas (and
+// anything unspecified) runs Blue/White.
+export function schemeForState(state?: string): ColorSchemeId {
+  const s = (state ?? "").trim().toUpperCase();
+  if (s === "OK" || s === "OKLAHOMA") return "rb";
+  return "bw"; // AR and default
 }
 
 // ---- Wagoner PD estimate #1233 (pulled live from QuickBooks, Id 2439) ----
@@ -375,6 +386,7 @@ export const WAGONER_ESTIMATE: Estimate = {
   docNumber: "1233",
   customer: "Chief Bob Haley",
   agency: "Wagoner Police Department",
+  state: "OK", // Wagoner, Oklahoma — runs Red/Blue
   memo: "Assumes 26 Ford PIU. No rear stick. No cage. Slicktop.",
   total: 11670.72,
   lines: [
@@ -410,8 +422,38 @@ export interface MatchResult {
   qty: number;
   typeId: string | null; // catalog SKU id, or null if unmatched/non-lighting
   colorOverride?: { c1: LightColorId; c2: LightColorId };
+  triColor?: boolean; // head is RBW/BRW: colors follow the department run scheme,
+  //                     not a fixed override (individual heads can still be edited)
   note?: string; // e.g. conflict flag
 }
+
+// ============================================================================
+// Department run scheme
+// ============================================================================
+// A tri-color-capable head (RBW/BRW) does NOT mean the department runs all three
+// colors. Most Oklahoma depts (e.g. Wagoner) run Red/Blue; many others run
+// Blue/White. The scheme is picked once for the build and drives every tri-color
+// head; solid/fixed-color lights (e.g. 416300-B, amber rear stick) are unaffected.
+export type ColorSchemeId = "rb" | "bw" | "rw" | "rbw";
+
+export interface ColorScheme {
+  id: ColorSchemeId;
+  label: string;
+  c1: LightColorId;
+  c2: LightColorId;
+  c3?: LightColorId; // third color for tri-color runs
+}
+
+export const COLOR_SCHEMES: ColorScheme[] = [
+  { id: "rb", label: "Red / Blue", c1: "red", c2: "blue" },
+  { id: "bw", label: "Blue / White", c1: "blue", c2: "white" },
+  { id: "rw", label: "Red / White", c1: "red", c2: "white" },
+  { id: "rbw", label: "Red / Blue / White", c1: "red", c2: "blue", c3: "white" },
+];
+
+export const COLOR_SCHEME_MAP: Record<ColorSchemeId, ColorScheme> = Object.fromEntries(
+  COLOR_SCHEMES.map((s) => [s.id, s]),
+) as Record<ColorSchemeId, ColorScheme>;
 
 // Normalize a QB item name: strip the "CATEGORY:" prefix and uppercase.
 function baseName(itemName: string): string {
@@ -433,23 +475,23 @@ export function matchLine(line: EstimateLine): MatchResult {
   // Warning + equipment SKU matching by prefix of the base part number
   if (bn.startsWith("MPS63")) {
     res.typeId = "mps63";
-    res.colorOverride = { c1: "red", c2: "blue" }; // RBW tri (white selectable)
+    res.triColor = true; // RBW — colors follow the department run scheme
   } else if (bn.startsWith("MPSW9")) {
     res.typeId = "mpsw9";
-    res.colorOverride = { c1: "red", c2: "blue" };
+    res.triColor = true; // RBW
   } else if (bn.startsWith("SIFMJS")) {
     res.typeId = "sifmjs";
-    res.colorOverride = { c1: "red", c2: "blue" };
+    res.triColor = true; // front visor — follows the run scheme
   } else if (bn.startsWith("SIFMJH")) {
     res.typeId = "sifmjh";
-    res.colorOverride = { c1: "amber", c2: "red" };
+    res.colorOverride = { c1: "amber", c2: "red" }; // rear stick: fixed amber/red
     res.note = "On quote, but memo says 'no rear stick' - verify";
   } else if (bn.startsWith("MPS123")) {
     res.typeId = "mps123";
-    res.colorOverride = { c1: "red", c2: "blue" };
+    res.triColor = true; // RBW
   } else if (bn.startsWith("XSM2")) {
     res.typeId = "xsm2";
-    res.colorOverride = { c1: "blue", c2: "red" }; // BRW
+    res.triColor = true; // BRW
   } else if (bn.startsWith("416300")) {
     res.typeId = "fs416300";
     // color from suffix: -B blue, -R red, -A amber
@@ -522,6 +564,12 @@ export function planPlacements(match: MatchResult): AutoPlacement[] {
   return out;
 }
 
+// Apply a department run scheme to a tri-color head, returning its two run colors.
+export function schemeColors(scheme: ColorSchemeId): { c1: LightColorId; c2: LightColorId } {
+  const s = COLOR_SCHEME_MAP[scheme];
+  return { c1: s.c1, c2: s.c2 };
+}
+
 // Build a full auto-placement plan + parameter set from an estimate.
 export function autoBuildFromEstimate(est: Estimate): {
   placements: (AutoPlacement & { colorOverride?: { c1: LightColorId; c2: LightColorId } })[];
@@ -529,10 +577,16 @@ export function autoBuildFromEstimate(est: Estimate): {
   params: BuildParams;
 } {
   const matches = est.lines.map(matchLine);
+  // Default run scheme from the department's state (OK=R/B, AR=B/W).
+  const colorScheme = schemeForState(est.state);
+  const run = schemeColors(colorScheme);
   const placements: (AutoPlacement & { colorOverride?: { c1: LightColorId; c2: LightColorId } })[] = [];
   for (const m of matches) {
+    // Tri-color heads take the department run scheme; fixed-color lights (solid
+    // 416300, amber rear stick) keep their explicit override.
+    const colorOverride = m.triColor ? run : m.colorOverride;
     for (const p of planPlacements(m)) {
-      placements.push({ ...p, colorOverride: m.colorOverride });
+      placements.push({ ...p, colorOverride });
     }
   }
   // Params derived from the build: Wagoner is slicktop + no push bar; it does
@@ -542,6 +596,7 @@ export function autoBuildFromEstimate(est: Estimate): {
     pushBar: !memo.includes("slicktop") && !memo.includes("no push"),
     dashLighting: true,
     rearHatchLights: true,
+    colorScheme,
   };
   return { placements, matches, params };
 }
