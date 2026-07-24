@@ -80,7 +80,7 @@ export function LightNodeMarker({
         }}
         data-testid={`marker-${node.id}`}
       >
-        <LightFixture sku={type} color1={node.color1} color2={node.color2} scale={selected ? 1.15 : 1} />
+        <LightFixture sku={type} color1={node.color1} color2={node.color2} scale={selected ? 1.12 : 1} />
       </div>
 
       {/* SKU tag on selected */}

@@ -22,6 +22,11 @@ import {
   COLOR_SCHEMES,
   schemeColors,
 } from "@/lib/catalog";
+import {
+  VEHICLES,
+  VEHICLE_MAP,
+  DEFAULT_VEHICLE_ID,
+} from "@/lib/vehicles";
 import { VehicleOverlays } from "@/components/VehicleOverlays";
 import { LightNodeMarker } from "@/components/LightNodeMarker";
 import { LightFixture } from "@/components/LightFixture";
@@ -47,13 +52,18 @@ import { useTheme } from "@/lib/theme";
 // `new URL(asset, import.meta.url)` resolution, which breaks behind the deploy
 // proxy path and left the vehicle image blank.
 const ASSET_BASE = import.meta.env.BASE_URL;
-const VIEW_IMAGES: Record<ViewId, string> = {
-  front: `${ASSET_BASE}piu_front.png`,
-  rear: `${ASSET_BASE}piu_rear.png`,
-  left: `${ASSET_BASE}piu_left.png`,
-  right: `${ASSET_BASE}piu_right.png`,
-  hero: `${ASSET_BASE}piu_hero.png`,
-};
+// Resolve the 6 view images for a given vehicle id (files live in /public).
+function viewImagesFor(vehicleId: string): Record<ViewId, string> {
+  const v = VEHICLE_MAP[vehicleId] ?? VEHICLE_MAP[DEFAULT_VEHICLE_ID];
+  return {
+    front: `${ASSET_BASE}${v.images.front}`,
+    rear: `${ASSET_BASE}${v.images.rear}`,
+    rearOpen: `${ASSET_BASE}${v.images.rearOpen}`,
+    left: `${ASSET_BASE}${v.images.left}`,
+    right: `${ASSET_BASE}${v.images.right}`,
+    hero: `${ASSET_BASE}${v.images.hero}`,
+  };
+}
 
 const GROUP_ORDER: SkuGroup[] = ["front", "hatch", "siren"];
 
@@ -85,6 +95,7 @@ export default function Visualizer() {
   const { theme, toggle } = useTheme();
   const { toast } = useToast();
   const [activeView, setActiveView] = useState<ViewId>("front");
+  const [vehicleId, setVehicleId] = useState<string>(DEFAULT_VEHICLE_ID);
   const [params, setParams] = useState<BuildParams>(DEFAULT_PARAMS);
   const [nodes, setNodes] = useState<LightNode[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -97,7 +108,20 @@ export default function Visualizer() {
   const dragType = useRef<string | null>(null);
 
   const viewNodes = nodes.filter((n) => n.view === activeView);
-  const projectName = "2025 Ford Police Interceptor Utility";
+  const vehicle = VEHICLE_MAP[vehicleId] ?? VEHICLE_MAP[DEFAULT_VEHICLE_ID];
+  const VIEW_IMAGES = viewImagesFor(vehicleId);
+  const projectName = vehicle.name;
+
+  // Switch the active vehicle. Clears placed nodes so the new body starts from
+  // its own baseline (the user re-runs Auto-Build, which copies the Wagoner
+  // layout onto whichever vehicle is selected).
+  const changeVehicle = useCallback((id: string) => {
+    setVehicleId(id);
+    setNodes([]);
+    setMatches(null);
+    setShowMatchPanel(false);
+    setSelectedId(null);
+  }, []);
 
   // Add a node of a given SKU type. If x/y omitted, use the SKU's suggested
   // default for the active view (falls back to center).
@@ -193,19 +217,21 @@ export default function Visualizer() {
     const est = WAGONER_ESTIMATE;
     const { placements, matches: matchResults, params: builtParams } = autoBuildFromEstimate(est);
     const placed: LightNode[] = [];
+    const nudge = vehicle.fixtureNudge ?? {};
     for (const p of placements) {
       const type = SKU_MAP[p.typeId];
       const def = type.defaults[p.view];
       const c1 = p.colorOverride?.c1 ?? type.defaultC1;
       const c2 = p.colorOverride?.c2 ?? type.defaultC2;
+      const vn = nudge[p.view] ?? { dx: 0, dy: 0 };
       placed.push({
         id: uid(p.typeId),
         view: p.view,
         typeId: p.typeId,
         color1: c1,
         color2: c2,
-        x: Math.max(2, Math.min(98, (p.absX ?? def?.x ?? 50) + p.dx)),
-        y: Math.max(2, Math.min(98, (p.absY ?? def?.y ?? 50) + p.dy)),
+        x: Math.max(2, Math.min(98, (p.absX ?? def?.x ?? 50) + p.dx + vn.dx)),
+        y: Math.max(2, Math.min(98, (p.absY ?? def?.y ?? 50) + p.dy + vn.dy)),
         rotation: def?.rot ?? (p.view === "rear" ? 180 : 0),
         orientation: type.defaultOrientation ?? "horizontal",
         label: type.sku,
@@ -410,6 +436,24 @@ export default function Visualizer() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor="vehicle-select" className="text-xs text-muted-foreground">
+              Vehicle
+            </Label>
+            <select
+              id="vehicle-select"
+              data-testid="select-vehicle"
+              value={vehicleId}
+              onChange={(e) => changeVehicle(e.target.value)}
+              className="h-8 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              {VEHICLES.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.short}
+                </option>
+              ))}
+            </select>
+          </div>
           <Button variant="secondary" size="sm" onClick={buildFromEstimate} data-testid="button-load-wagoner">
             <PackageOpen className="mr-1.5 h-4 w-4" /> Auto-Build from QuickBooks (Est. 1233)
           </Button>

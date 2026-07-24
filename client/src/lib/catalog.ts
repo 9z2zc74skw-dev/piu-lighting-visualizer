@@ -2,7 +2,7 @@
 // SKUs sourced from the Wagoner PIU build — Estimate 1233.
 // Integrity Upfitters builds mainly on Federal Signal.
 
-export type ViewId = "front" | "rear" | "left" | "right" | "hero";
+export type ViewId = "front" | "rear" | "rearOpen" | "left" | "right" | "hero";
 
 export interface ViewDef {
   id: ViewId;
@@ -13,6 +13,7 @@ export interface ViewDef {
 export const VIEWS: ViewDef[] = [
   { id: "front", label: "Front", short: "F" },
   { id: "rear", label: "Rear", short: "R" },
+  { id: "rearOpen", label: "Rear (Hatch Open)", short: "RO" },
   { id: "left", label: "Left Side", short: "L" },
   { id: "right", label: "Right Side", short: "RT" },
   { id: "hero", label: "3/4 View", short: "3Q" },
@@ -28,13 +29,14 @@ export const GROUP_LABELS: Record<SkuGroup, string> = {
 };
 
 // Physical form factor of the light body — drives the rendered SVG shape.
-// bar   = short linear MicroPulse LED bar
-// wide  = wide low-profile mirror head
-// stick = long multi-segment SignalMaster
-// module= compact rectangular corner module
+// bar   = short linear MicroPulse LED bar (discrete round LEDs under a clear lens)
+// wide  = curved 180-degree wide-angle perimeter head (MicroPulse Wide Angle)
+// stick = long multi-head SignalMaster traffic advisor (row of round LED heads)
+// module= compact rectangular corner module (SpectraLux)
+// round = 1-inch round grommet-mount perimeter light (416300 Series)
 // equip = siren/control equipment box (no warning color)
 // scene = takedown/scene flood (white only)
-export type FixtureShape = "bar" | "wide" | "stick" | "module" | "equip" | "scene";
+export type FixtureShape = "bar" | "wide" | "stick" | "module" | "round" | "equip" | "scene";
 
 // Mounting orientation of a fixture's long axis. Horizontal = across (typical
 // grille/visor); vertical = up/down (e.g. MPS1200-series on the rear hatch
@@ -56,6 +58,11 @@ export interface SkuType {
   defaultC2: LightColorId; // default secondary color (split heads)
   allowWhite: boolean; // whether white is a valid color for this head
   allowTriColor?: boolean; // RBW/BRW heads: allow white as a selectable warning color
+  triABR?: boolean; // SignalMaster tri-color A/B/R: warning (R/B) or amber traffic mode
+  solidBar?: boolean; // MicroPulse bar heads (MPS63/MPS123) alternate R then B in
+  //                     real life rather than showing a split — render each node
+  //                     as a SOLID single color (picked by color1), and auto-build
+  //                     alternates the pair red/blue.
   defaultOrientation?: Orientation; // how it mounts by default (defaults to horizontal)
   // suggested default drop position per view (percent of stage). If a view is
   // missing, the SKU is not typically shown on that view but can still be placed.
@@ -76,9 +83,10 @@ export const SKU_TYPES: SkuType[] = [
     spreadDeg: 90,
     lengthPx: 46,
     defaultC1: "red",
-    defaultC2: "blue",
+    defaultC2: "red",
     allowWhite: false,
     allowTriColor: true,
+    solidBar: true,
     defaults: {
       front: { x: 40, y: 51, rot: 0 },
       hero: { x: 33, y: 52, rot: -20 },
@@ -127,16 +135,20 @@ export const SKU_TYPES: SkuType[] = [
   {
     id: "sifmjh",
     sku: "SIFMJH",
-    name: "SignalMaster (Rear Hatch)",
+    name: "SignalMaster (Rear Hatch) — tri-color A/B/R",
     group: "hatch",
     mount: "Rear hatch glass, upper",
     shape: "stick",
     segments: 8,
     spreadDeg: 140,
     lengthPx: 96,
-    defaultC1: "amber",
-    defaultC2: "red",
+    // Tri-color A/B/R head. Two modes via the color picker:
+    //   • Warning mode  = red/blue split (default)
+    //   • Traffic mode  = set either head to amber -> all-amber directional
+    defaultC1: "red",
+    defaultC2: "blue",
     allowWhite: false,
+    triABR: true,
     defaults: {
       rear: { x: 50, y: 30, rot: 180 },
       hero: { x: 76, y: 28, rot: 160 },
@@ -153,9 +165,10 @@ export const SKU_TYPES: SkuType[] = [
     spreadDeg: 110,
     lengthPx: 44,
     defaultC1: "red",
-    defaultC2: "blue",
+    defaultC2: "red",
     allowWhite: false,
     allowTriColor: true,
+    solidBar: true,
     defaultOrientation: "vertical",
     defaults: {
       rear: { x: 26, y: 40, rot: 180 },
@@ -164,18 +177,21 @@ export const SKU_TYPES: SkuType[] = [
   {
     id: "fs416300",
     sku: "416300",
-    name: "MicroPulse Ultra (Hatch)",
+    name: "416300 Perimeter (1\" round)",
     group: "hatch",
-    mount: "Rear hatch, lower glass",
-    shape: "bar",
-    segments: 5,
+    mount: "Inside hatch — OBD-triggered rear coverage (1\" round)",
+    shape: "round",
+    segments: 1,
     spreadDeg: 100,
-    lengthPx: 40,
+    lengthPx: 18,
     defaultC1: "blue",
     defaultC2: "amber",
     allowWhite: false,
     defaults: {
       rear: { x: 62, y: 36, rot: 180 },
+      // Mounted on the underside of the raised liftgate; activates via OBD when
+      // the hatch opens, projecting rearward/down over the officer.
+      rearOpen: { x: 40, y: 16, rot: 180 },
     },
   },
   {
@@ -525,6 +541,7 @@ export interface AutoPlacement {
   dy: number;
   absX?: number; // absolute x (percent) — overrides the SKU default x when set
   absY?: number; // absolute y (percent) — overrides the SKU default y when set
+  colorOverride?: { c1: LightColorId; c2: LightColorId }; // per-unit solid color
 }
 
 export function planPlacements(match: MatchResult): AutoPlacement[] {
@@ -533,10 +550,13 @@ export function planPlacements(match: MatchResult): AutoPlacement[] {
   const sku = SKU_MAP[typeId];
   const out: AutoPlacement[] = [];
 
-  // Grille bars (MPS63): a pair on the front, L/R of grille
+  // Grille bars (MPS63): a pair on the front, L/R of grille. Solid single-color
+  // heads that ALTERNATE red / blue (driver red, passenger blue) per the run scheme.
   if (typeId === "mps63") {
     const n = Math.min(qty, 2);
-    for (let i = 0; i < n; i++) out.push({ typeId, view: "front", dx: i === 0 ? -8 : 8, dy: 0 });
+    const alt = solidAltColors(match);
+    for (let i = 0; i < n; i++)
+      out.push({ typeId, view: "front", dx: i === 0 ? -8 : 8, dy: 0, colorOverride: alt[i % 2] });
     return out;
   }
   // Mirror heads (MPSW9): a pair on the front view — one on each side mirror —
@@ -549,8 +569,34 @@ export function planPlacements(match: MatchResult): AutoPlacement[] {
     out.push({ typeId, view: "right", dx: 0, dy: 0 });
     return out;
   }
-  // Rear hatch pairs/singles: fan across the glass
-  if (typeId === "mps123" || typeId === "fs416300" || typeId === "xsm2") {
+  // 416300 (1" round): mounted INSIDE the hatch. Shown on the closed rear
+  // (flush in the lower glass) AND on the hatch-open view where they activate
+  // via OBD and project rearward/down over the officer.
+  if (typeId === "fs416300") {
+    const n = Math.max(1, Math.min(qty, 2));
+    for (let i = 0; i < n; i++) {
+      const dx = n === 1 ? 0 : i === 0 ? -12 : 12;
+      out.push({ typeId, view: "rear", dx, dy: 0 });
+      // Pair mounted on the liftgate UNDERSIDE trim, near the outer left/right
+      // edges and low on the gate, aimed rearward/down (matches real builds).
+      const oX = n === 1 ? 44 : i === 0 ? 30 : 58;
+      out.push({ typeId, view: "rearOpen", dx: 0, dy: 0, absX: oX, absY: 15 });
+    }
+    return out;
+  }
+  // Rear hatch MicroPulse bars (MPS123): solid single-color heads that ALTERNATE
+  // red / blue — one on each side of the plate.
+  if (typeId === "mps123") {
+    const n = Math.max(1, Math.min(qty, 2));
+    const alt = solidAltColors(match);
+    for (let i = 0; i < n; i++) {
+      const dx = n === 1 ? 0 : i === 0 ? -12 : 12;
+      out.push({ typeId, view: "rear", dx, dy: 0, colorOverride: alt[i % 2] });
+    }
+    return out;
+  }
+  // XSM2 corner modules: fan across the glass (split head)
+  if (typeId === "xsm2") {
     const n = Math.max(1, Math.min(qty, 2));
     for (let i = 0; i < n; i++) {
       const dx = n === 1 ? 0 : i === 0 ? -12 : 12;
@@ -570,6 +616,20 @@ export function schemeColors(scheme: ColorSchemeId): { c1: LightColorId; c2: Lig
   return { c1: s.c1, c2: s.c2 };
 }
 
+// For a solid-bar SKU, return the two alternating SOLID colors to assign across
+// a pair (e.g. [red, blue]). Uses the run scheme's two colors; each returned
+// entry is a solid single color (c1 === c2).
+function solidAltColors(match: MatchResult): { c1: LightColorId; c2: LightColorId }[] {
+  // If the match carries a run-scheme override, use it; else default red/blue.
+  const run = match.colorOverride ?? { c1: "red" as LightColorId, c2: "blue" as LightColorId };
+  const a = run.c1;
+  const b = run.c2 === run.c1 ? "blue" : run.c2;
+  return [
+    { c1: a, c2: a },
+    { c1: b, c2: b },
+  ];
+}
+
 // Build a full auto-placement plan + parameter set from an estimate.
 export function autoBuildFromEstimate(est: Estimate): {
   placements: (AutoPlacement & { colorOverride?: { c1: LightColorId; c2: LightColorId } })[];
@@ -584,9 +644,14 @@ export function autoBuildFromEstimate(est: Estimate): {
   for (const m of matches) {
     // Tri-color heads take the department run scheme; fixed-color lights (solid
     // 416300, amber rear stick) keep their explicit override.
-    const colorOverride = m.triColor ? run : m.colorOverride;
-    for (const p of planPlacements(m)) {
-      placements.push({ ...p, colorOverride });
+    const matchColor = m.triColor ? run : m.colorOverride;
+    // For solid-bar SKUs, planPlacements alternates a solid color PER UNIT; pass
+    // the run scheme into the match so the alternation uses the dept's two colors.
+    const mForPlan =
+      SKU_MAP[m.typeId ?? ""]?.solidBar && m.triColor ? { ...m, colorOverride: run } : m;
+    for (const p of planPlacements(mForPlan)) {
+      // A per-unit colorOverride from planPlacements wins over the match-level one.
+      placements.push({ ...p, colorOverride: p.colorOverride ?? matchColor });
     }
   }
   // Params derived from the build: Wagoner is slicktop + no push bar; it does
