@@ -33,126 +33,127 @@ function deckColors(params: BuildParams): string[] {
 const HDX_WINGS = false;
 function PushBar({ view }: { view: ViewId }) {
   if (view === "front") {
-    // grille-guard geometry (0-100 x 0-75 viewBox)
-    const topY = 33;          // top cross-tube height
-    const botY = 50;          // bottom of uprights
-    const uL = 39, uR = 59;   // upright centers
-    const tw = 2.4;           // tube thickness
-    // punch plate
-    const px = 42, pw = 16, py = 44, ph = 6.5;
+    // Westin HDX base push bumper (front, straight-on). 0-100 x 0-75 viewBox.
+    // Inverted-U tube frame (top hoop + two side rails) with a full expanded-
+    // metal mesh center panel and a heavy bottom rail.
+    const fx = 38, frw = 24;        // frame left / width
+    const topY = 34, botY = 50;     // frame top / bottom
+    const tw = 1.9;                 // tube thickness
+    const inX = fx + tw, inW = frw - tw * 2;         // mesh interior
+    const inY = topY + tw, inH = botY - topY - tw * 2;
     return (
       <g data-testid="overlay-pushbar">
         <defs>
           <linearGradient id="hdxTube" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="#04060a" />
-            <stop offset="30%" stopColor="#333b48" />
-            <stop offset="52%" stopColor="#1a1f27" />
+            <stop offset="32%" stopColor="#3a4250" />
+            <stop offset="55%" stopColor="#1a1f27" />
             <stop offset="100%" stopColor="#04060a" />
           </linearGradient>
-          <linearGradient id="hdxTubeH" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#333b48" />
-            <stop offset="45%" stopColor="#1a1f27" />
-            <stop offset="100%" stopColor="#04060a" />
-          </linearGradient>
-          <linearGradient id="hdxPlate" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#2c333f" />
-            <stop offset="40%" stopColor="#12161c" />
+          <linearGradient id="hdxMesh" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#20252d" />
+            <stop offset="45%" stopColor="#12161c" />
             <stop offset="100%" stopColor="#080a0e" />
           </linearGradient>
-          <clipPath id="hdxPlateClip">
-            <rect x={px} y={py} width={pw} height={ph} rx="1" />
+          {/* fine expanded-metal mesh: diagonal cross weave */}
+          <pattern id="hdxMeshPat" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="1.4" height="1.4" fill="#0b0e13" />
+            <rect width="0.5" height="1.4" fill="#2b323d" opacity="0.85" />
+            <rect width="1.4" height="0.5" fill="#232a33" opacity="0.7" />
+          </pattern>
+          <clipPath id="hdxMeshClip">
+            <rect x={inX} y={inY} width={inW} height={inH} rx="0.8" />
           </clipPath>
         </defs>
 
-        {/* optional PIT / headlight wrap wings (off by default) */}
+        {/* mesh center panel (fills the frame) */}
+        <rect x={inX} y={inY} width={inW} height={inH} rx="0.8" fill="url(#hdxMesh)" />
+        <rect x={inX} y={inY} width={inW} height={inH} rx="0.8" fill="url(#hdxMeshPat)" clipPath="url(#hdxMeshClip)" />
+
+        {/* inverted-U tube frame: top hoop + two side rails, drawn as one path */}
+        <path
+          d={`M${fx} ${botY} L${fx} ${topY + 2.4} Q${fx} ${topY} ${fx + 2.4} ${topY} L${fx + frw - 2.4} ${topY} Q${fx + frw} ${topY} ${fx + frw} ${topY + 2.4} L${fx + frw} ${botY}`}
+          fill="none" stroke="url(#hdxTube)" strokeWidth={tw} strokeLinecap="round" strokeLinejoin="round"
+        />
+        {/* specular highlight along the top hoop */}
+        <path
+          d={`M${fx + 0.6} ${topY + 3} Q${fx + 0.6} ${topY + 0.6} ${fx + 3} ${topY + 0.6} L${fx + frw - 3} ${topY + 0.6}`}
+          fill="none" stroke="#5f6a7a" strokeWidth="0.45" strokeLinecap="round" opacity="0.75"
+        />
+
+        {/* heavy bottom rail across the base */}
+        <rect x={fx - 0.4} y={botY - 1.2} width={frw + 0.8} height="2.4" rx="1.2" fill="url(#hdxTube)" />
+        <rect x={fx + 0.6} y={botY - 0.9} width={frw - 1.2} height="0.5" rx="0.25" fill="#5f6a7a" opacity="0.7" />
+
+        {/* two mounting legs dropping from the bottom rail to the bumper */}
+        <rect x={fx + 4} y={botY + 0.8} width={tw * 0.9} height="3" rx="0.6" fill="url(#hdxTube)" />
+        <rect x={fx + frw - 4 - tw * 0.9} y={botY + 0.8} width={tw * 0.9} height="3" rx="0.6" fill="url(#hdxTube)" />
+
+        {/* optional PIT bars / wing wraps (off by default — gated for later) */}
         {HDX_WINGS && (
           <>
-            <path d={`M${uL} ${topY + 1} Q31 ${topY + 2} 29 ${botY - 1}`}
-              fill="none" stroke="url(#hdxTubeH)" strokeWidth={tw} strokeLinecap="round" />
-            <path d={`M${uR} ${topY + 1} Q69 ${topY + 2} 71 ${botY - 1}`}
-              fill="none" stroke="url(#hdxTubeH)" strokeWidth={tw} strokeLinecap="round" />
+            <path d={`M${fx} ${topY + 2} Q${fx - 6} ${topY + 3} ${fx - 8} ${botY - 1}`}
+              fill="none" stroke="url(#hdxTube)" strokeWidth={tw} strokeLinecap="round" />
+            <path d={`M${fx + frw} ${topY + 2} Q${fx + frw + 6} ${topY + 3} ${fx + frw + 8} ${botY - 1}`}
+              fill="none" stroke="url(#hdxTube)" strokeWidth={tw} strokeLinecap="round" />
           </>
         )}
-
-        {/* top cross-tube spanning the two uprights (with a slight bow up) */}
-        <path d={`M${uL} ${topY} Q50 ${topY - 2.4} ${uR} ${topY}`}
-          fill="none" stroke="url(#hdxTube)" strokeWidth={tw} strokeLinecap="round" />
-        {/* specular highlight on the top tube */}
-        <path d={`M${uL + 1} ${topY - 0.7} Q50 ${topY - 3} ${uR - 1} ${topY - 0.7}`}
-          fill="none" stroke="#5a6474" strokeWidth="0.5" strokeLinecap="round" opacity="0.7" />
-
-        {/* two vertical uprights */}
-        <rect x={uL - tw / 2} y={topY} width={tw} height={botY - topY} rx={tw / 2} fill="url(#hdxTube)" />
-        <rect x={uR - tw / 2} y={topY} width={tw} height={botY - topY} rx={tw / 2} fill="url(#hdxTube)" />
-        {/* specular edge on uprights */}
-        <rect x={uL - tw / 2 + 0.5} y={topY + 1} width="0.5" height={botY - topY - 2} rx="0.25" fill="#5a6474" opacity="0.7" />
-        <rect x={uR - tw / 2 + 0.5} y={topY + 1} width="0.5" height={botY - topY - 2} rx="0.25" fill="#5a6474" opacity="0.7" />
-
-        {/* mid brace tube between uprights (above the plate) */}
-        <rect x={uL} y="41" width={uR - uL} height={tw * 0.8} rx={tw * 0.4} fill="url(#hdxTube)" transform="" />
-
-        {/* perforated punch-plate skid guard at bottom center */}
-        <rect x={px} y={py} width={pw} height={ph} rx="1" fill="url(#hdxPlate)" stroke="#454e5c" strokeWidth="0.4" />
-        <g clipPath="url(#hdxPlateClip)">
-          {Array.from({ length: 5 }).map((_, r) =>
-            Array.from({ length: 13 }).map((_, c) => (
-              <circle key={`${r}-${c}`} cx={px + 1.3 + c * 1.15} cy={py + 1.2 + r * 1.1} r="0.26" fill="#00000070" />
-            ))
-          )}
-        </g>
-        <rect x={px + 0.4} y={py + 0.3} width={pw - 0.8} height="0.6" rx="0.3" fill="#4a5361" opacity="0.8" />
       </g>
     );
   }
   if (view === "hero") {
-    // 3/4 hero: same guard, foreshortened & rotated to sit on the front fascia
+    // 3/4 hero: HDX base push bumper, foreshortened & rotated onto the fascia.
+    const fx = 22, frw = 22;
     const topY = 33, botY = 49;
-    const uL = 24, uR = 43, tw = 2.2;
-    const px = 27, pw = 14, py = 43.5, ph = 6;
+    const tw = 1.8;
+    const inX = fx + tw, inW = frw - tw * 2;
+    const inY = topY + tw, inH = botY - topY - tw * 2;
     return (
-      <g data-testid="overlay-pushbar" transform="rotate(-5 34 44)">
+      <g data-testid="overlay-pushbar" transform="rotate(-5 33 44)">
         <defs>
           <linearGradient id="hdxTube2" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="#04060a" />
-            <stop offset="30%" stopColor="#333b48" />
-            <stop offset="52%" stopColor="#1a1f27" />
+            <stop offset="32%" stopColor="#3a4250" />
+            <stop offset="55%" stopColor="#1a1f27" />
             <stop offset="100%" stopColor="#04060a" />
           </linearGradient>
-          <linearGradient id="hdxPlate2" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#2c333f" />
-            <stop offset="40%" stopColor="#12161c" />
+          <linearGradient id="hdxMesh2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#20252d" />
+            <stop offset="45%" stopColor="#12161c" />
             <stop offset="100%" stopColor="#080a0e" />
           </linearGradient>
-          <clipPath id="hdxPlateClip2">
-            <rect x={px} y={py} width={pw} height={ph} rx="1" />
+          <pattern id="hdxMeshPat2" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="1.4" height="1.4" fill="#0b0e13" />
+            <rect width="0.5" height="1.4" fill="#2b323d" opacity="0.85" />
+            <rect width="1.4" height="0.5" fill="#232a33" opacity="0.7" />
+          </pattern>
+          <clipPath id="hdxMeshClip2">
+            <rect x={inX} y={inY} width={inW} height={inH} rx="0.8" />
           </clipPath>
         </defs>
-        {/* optional PIT / headlight wrap wing (off by default) */}
+        {/* mesh center panel */}
+        <rect x={inX} y={inY} width={inW} height={inH} rx="0.8" fill="url(#hdxMesh2)" />
+        <rect x={inX} y={inY} width={inW} height={inH} rx="0.8" fill="url(#hdxMeshPat2)" clipPath="url(#hdxMeshClip2)" />
+        {/* inverted-U tube frame */}
+        <path
+          d={`M${fx} ${botY} L${fx} ${topY + 2.2} Q${fx} ${topY} ${fx + 2.2} ${topY} L${fx + frw - 2.2} ${topY} Q${fx + frw} ${topY} ${fx + frw} ${topY + 2.2} L${fx + frw} ${botY}`}
+          fill="none" stroke="url(#hdxTube2)" strokeWidth={tw} strokeLinecap="round" strokeLinejoin="round"
+        />
+        <path
+          d={`M${fx + 0.5} ${topY + 2.6} Q${fx + 0.5} ${topY + 0.5} ${fx + 2.6} ${topY + 0.5} L${fx + frw - 2.6} ${topY + 0.5}`}
+          fill="none" stroke="#5f6a7a" strokeWidth="0.4" strokeLinecap="round" opacity="0.75"
+        />
+        {/* heavy bottom rail */}
+        <rect x={fx - 0.4} y={botY - 1.1} width={frw + 0.8} height="2.2" rx="1.1" fill="url(#hdxTube2)" />
+        <rect x={fx + 0.6} y={botY - 0.8} width={frw - 1.2} height="0.45" rx="0.22" fill="#5f6a7a" opacity="0.7" />
+        {/* mounting legs */}
+        <rect x={fx + 3.5} y={botY + 0.6} width={tw * 0.9} height="2.6" rx="0.55" fill="url(#hdxTube2)" />
+        <rect x={fx + frw - 3.5 - tw * 0.9} y={botY + 0.6} width={tw * 0.9} height="2.6" rx="0.55" fill="url(#hdxTube2)" />
+        {/* optional PIT bars / wing wraps (off by default) */}
         {HDX_WINGS && (
-          <path d={`M${uR} ${topY + 1} Q${uR + 4} ${topY + 2} ${uR + 5} ${botY - 1}`}
+          <path d={`M${fx + frw} ${topY + 2} Q${fx + frw + 5} ${topY + 3} ${fx + frw + 6} ${botY - 1}`}
             fill="none" stroke="url(#hdxTube2)" strokeWidth={tw} strokeLinecap="round" />
         )}
-        {/* top cross-tube */}
-        <path d={`M${uL} ${topY} Q${(uL + uR) / 2} ${topY - 2.2} ${uR} ${topY}`}
-          fill="none" stroke="url(#hdxTube2)" strokeWidth={tw} strokeLinecap="round" />
-        <path d={`M${uL + 1} ${topY - 0.6} Q${(uL + uR) / 2} ${topY - 2.7} ${uR - 1} ${topY - 0.6}`}
-          fill="none" stroke="#5a6474" strokeWidth="0.45" strokeLinecap="round" opacity="0.7" />
-        {/* uprights */}
-        <rect x={uL - tw / 2} y={topY} width={tw} height={botY - topY} rx={tw / 2} fill="url(#hdxTube2)" />
-        <rect x={uR - tw / 2} y={topY} width={tw} height={botY - topY} rx={tw / 2} fill="url(#hdxTube2)" />
-        <rect x={uL - tw / 2 + 0.4} y={topY + 1} width="0.45" height={botY - topY - 2} rx="0.2" fill="#5a6474" opacity="0.7" />
-        {/* mid brace */}
-        <rect x={uL} y="41" width={uR - uL} height={tw * 0.8} rx={tw * 0.4} fill="url(#hdxTube2)" />
-        {/* punch-plate */}
-        <rect x={px} y={py} width={pw} height={ph} rx="1" fill="url(#hdxPlate2)" stroke="#454e5c" strokeWidth="0.4" />
-        <g clipPath="url(#hdxPlateClip2)">
-          {Array.from({ length: 4 }).map((_, r) =>
-            Array.from({ length: 11 }).map((_, c) => (
-              <circle key={`${r}-${c}`} cx={px + 1.3 + c * 1.18} cy={py + 1.2 + r * 1.15} r="0.24" fill="#00000070" />
-            ))
-          )}
-        </g>
-        <rect x={px + 0.4} y={py + 0.3} width={pw - 0.8} height="0.5" rx="0.25" fill="#4a5361" opacity="0.8" />
       </g>
     );
   }
