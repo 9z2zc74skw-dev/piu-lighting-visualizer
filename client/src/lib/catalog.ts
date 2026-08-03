@@ -631,14 +631,15 @@ function solidAltColors(match: MatchResult): { c1: LightColorId; c2: LightColorI
 }
 
 // Build a full auto-placement plan + parameter set from an estimate.
-export function autoBuildFromEstimate(est: Estimate): {
+export function autoBuildFromEstimate(est: Estimate, schemeOverride?: ColorSchemeId): {
   placements: (AutoPlacement & { colorOverride?: { c1: LightColorId; c2: LightColorId } })[];
   matches: MatchResult[];
   params: BuildParams;
 } {
   const matches = est.lines.map(matchLine);
-  // Default run scheme from the department's state (OK=R/B, AR=B/W).
-  const colorScheme = schemeForState(est.state);
+  // Run scheme: honor an explicit user selection if given, otherwise fall back
+  // to the department's state default (OK=R/B, AR=B/W).
+  const colorScheme = schemeOverride ?? schemeForState(est.state);
   const run = schemeColors(colorScheme);
   const placements: (AutoPlacement & { colorOverride?: { c1: LightColorId; c2: LightColorId } })[] = [];
   for (const m of matches) {

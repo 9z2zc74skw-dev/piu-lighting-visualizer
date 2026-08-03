@@ -50,8 +50,10 @@ function pairKey(c1: LightColorId, c2: LightColorId): "rb" | "bw" {
 // solid single-color sprite suffix for a bar node (real MicroPulse heads
 // alternate R then B rather than showing a split, so we render one solid color
 // per node — picked by color1).
-function solidKey(c1: LightColorId): "r" | "b" {
-  return c1 === "blue" ? "b" : "r";
+function solidKey(c1: LightColorId): "r" | "b" | "w" {
+  if (c1 === "blue") return "b";
+  if (c1 === "white") return "w";
+  return "r";
 }
 
 function spriteFor(sku: SkuType, c1: LightColorId, c2: LightColorId): string | null {
@@ -67,9 +69,11 @@ function spriteFor(sku: SkuType, c1: LightColorId, c2: LightColorId): string | n
       if (sku.solidBar) return `${BASE}fx/fx_bar_${solidKey(c1)}.png`;
       return `${BASE}fx/fx_bar_${pairKey(c1, c2)}.png`;
     case "stick": {
-      // amber traffic advisor (rear directional) vs R/B SignalMaster
+      // amber traffic advisor (rear directional); otherwise SignalMaster in the
+      // dept scheme: blue/white when white is present, else red/blue.
       const amber = c1 === "amber" || c2 === "amber";
-      return amber ? `${BASE}fx/fx_stick_amber.png` : `${BASE}fx/fx_stick_rb.png`;
+      if (amber) return `${BASE}fx/fx_stick_amber.png`;
+      return `${BASE}fx/fx_stick_${pairKey(c1, c2)}.png`;
     }
     case "round": {
       const c = c1 === "blue" ? "b" : c1 === "amber" ? "a" : "r";

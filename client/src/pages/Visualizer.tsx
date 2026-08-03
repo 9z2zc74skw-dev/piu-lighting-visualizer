@@ -215,7 +215,9 @@ export default function Visualizer() {
   // and derive build params from the memo.
   const buildFromEstimate = () => {
     const est = WAGONER_ESTIMATE;
-    const { placements, matches: matchResults, params: builtParams } = autoBuildFromEstimate(est);
+    // Honor the scheme the user currently has selected (e.g. Blue/White) rather
+    // than always resetting to the department's state default.
+    const { placements, matches: matchResults, params: builtParams } = autoBuildFromEstimate(est, params.colorScheme);
     const placed: LightNode[] = [];
     const nudge = vehicle.fixtureNudge ?? {};
     for (const p of placements) {
