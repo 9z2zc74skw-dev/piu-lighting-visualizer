@@ -44,6 +44,9 @@ import {
   Sun,
   Moon,
   PackageOpen,
+  Search,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 
@@ -103,6 +106,10 @@ export default function Visualizer() {
   // Estimate match results (populated by auto-build) + whether the build is active
   const [matches, setMatches] = useState<MatchResult[] | null>(null);
   const [showMatchPanel, setShowMatchPanel] = useState(false);
+  // Palette search + per-group collapse. Groups start expanded; searching
+  // temporarily overrides collapse so all matches are visible.
+  const [paletteQuery, setPaletteQuery] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const stageRef = useRef<HTMLDivElement>(null);
   const dragType = useRef<string | null>(null);
@@ -423,7 +430,7 @@ export default function Visualizer() {
   const selectedNode = nodes.find((n) => n.id === selectedId);
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <div className="h-screen overflow-hidden bg-background text-foreground flex flex-col">
       {/* Top bar */}
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 md:px-6" data-export-hide>
         <div className="flex items-center gap-3">
@@ -471,59 +478,126 @@ export default function Visualizer() {
         </div>
       </header>
 
-      <div className="flex flex-1 flex-col lg:flex-row">
-        {/* Left palette — grouped by function */}
-        <aside className="w-full shrink-0 border-b border-border p-4 lg:w-80 lg:border-b-0 lg:border-r lg:overflow-y-auto" data-export-hide>
-          <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Federal Signal SKUs
-          </h2>
-          <p className="mb-3 text-xs text-muted-foreground">
-            Drag onto the vehicle, or tap + to drop at the suggested mount. Then drag to fine-tune, select to rotate or recolor.
-          </p>
-
-          {GROUP_ORDER.map((group) => (
-            <div key={group} className="mb-4">
-              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-primary/80">
-                {GROUP_LABELS[group]}
-              </h3>
-              <div className="space-y-2">
-                {SKU_TYPES.filter((t) => t.group === group).map((t) => {
-                  return (
-                    <div
-                      key={t.id}
-                      draggable
-                      onDragStart={() => (dragType.current = t.id)}
-                      className="group flex cursor-grab items-start gap-2.5 rounded-md border border-border bg-card p-2.5 hover-elevate active:cursor-grabbing"
-                      data-testid={`palette-${t.id}`}
-                    >
-                      <div className="mt-1 flex h-6 w-8 shrink-0 items-center justify-center">
-                        <LightFixture sku={t} color1={t.defaultC1} color2={t.defaultC2} scale={0.7} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="text-sm font-semibold font-mono">{t.sku}</span>
-                          <button
-                            onClick={() => addNode(t.id)}
-                            className="flex h-5 w-5 items-center justify-center rounded bg-secondary text-secondary-foreground hover-elevate"
-                            title="Drop at suggested mount"
-                            data-testid={`button-add-${t.id}`}
-                          >
-                            <Plus className="h-3 w-3" />
-                          </button>
-                        </div>
-                        <p className="text-[11px] font-medium">{t.name}</p>
-                        <p className="text-[10px] leading-snug text-muted-foreground">{t.mount}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        {/* Left palette — compact, searchable, collapsible. Sticky header +
+            internal scroll so the vehicle stays on screen no matter how many
+            parts the catalog grows to. */}
+        <aside
+          className="flex w-full shrink-0 flex-col border-b border-border max-h-[38vh] lg:max-h-none lg:h-full lg:w-72 lg:border-b-0 lg:border-r"
+          data-export-hide
+        >
+          {/* Sticky search / title header */}
+          <div className="shrink-0 border-b border-border bg-background/95 px-3 py-2.5 backdrop-blur">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Parts
+              </h2>
+              <span className="text-[10px] text-muted-foreground">{SKU_TYPES.length} SKUs</span>
             </div>
-          ))}
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={paletteQuery}
+                onChange={(e) => setPaletteQuery(e.target.value)}
+                placeholder="Search SKU or name…"
+                data-testid="input-palette-search"
+                className="h-8 w-full rounded-md border border-border bg-background pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          </div>
+
+          {/* Scrollable, grouped, collapsible list */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+            {(() => {
+              const q = paletteQuery.trim().toLowerCase();
+              const searching = q.length > 0;
+              let shown = 0;
+              const rendered = GROUP_ORDER.map((group) => {
+                const items = SKU_TYPES.filter(
+                  (t) =>
+                    t.group === group &&
+                    (!searching ||
+                      t.sku.toLowerCase().includes(q) ||
+                      t.name.toLowerCase().includes(q) ||
+                      t.mount.toLowerCase().includes(q)),
+                );
+                if (items.length === 0) return null;
+                shown += items.length;
+                const collapsed = !searching && collapsedGroups[group];
+                return (
+                  <div key={group} className="mb-1.5">
+                    <button
+                      onClick={() =>
+                        setCollapsedGroups((prev) => ({ ...prev, [group]: !prev[group] }))
+                      }
+                      className="flex w-full items-center gap-1 rounded px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary/80 hover-elevate"
+                      data-testid={`group-toggle-${group}`}
+                    >
+                      {collapsed ? (
+                        <ChevronRight className="h-3 w-3" />
+                      ) : (
+                        <ChevronDown className="h-3 w-3" />
+                      )}
+                      {GROUP_LABELS[group]}
+                      <span className="ml-1 font-normal text-muted-foreground">({items.length})</span>
+                    </button>
+                    {!collapsed && (
+                      <div className="mt-0.5">
+                        {items.map((t) => (
+                          <div
+                            key={t.id}
+                            draggable
+                            onDragStart={() => (dragType.current = t.id)}
+                            onClick={() => addNode(t.id)}
+                            title={`${t.name} — ${t.mount}\n(drag onto vehicle, or click to drop at suggested mount)`}
+                            className="group flex cursor-grab items-center gap-2 rounded px-1.5 py-1 hover-elevate active:cursor-grabbing"
+                            data-testid={`palette-${t.id}`}
+                          >
+                            <div className="flex h-4 w-7 shrink-0 items-center justify-center">
+                              <LightFixture sku={t} color1={t.defaultC1} color2={t.defaultC2} scale={0.55} />
+                            </div>
+                            <span className="shrink-0 font-mono text-[11px] font-semibold">{t.sku}</span>
+                            <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
+                              {t.name}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addNode(t.id);
+                              }}
+                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-secondary text-secondary-foreground opacity-0 hover-elevate group-hover:opacity-100"
+                              title="Drop at suggested mount"
+                              data-testid={`button-add-${t.id}`}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              });
+              return (
+                <>
+                  {rendered}
+                  {shown === 0 && (
+                    <p className="px-2 py-6 text-center text-[11px] text-muted-foreground">
+                      No parts match “{paletteQuery}”.
+                    </p>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+          <p className="shrink-0 border-t border-border px-3 py-2 text-[10px] leading-snug text-muted-foreground">
+            Drag onto the vehicle, or click a row / the + to drop at its mount. Then drag to fine-tune, select to rotate or recolor.
+          </p>
         </aside>
 
         {/* Center stage */}
-        <main className="flex flex-1 flex-col items-center p-4">
+        <main className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto p-4">
           <div className="mb-3 flex flex-wrap items-center justify-center gap-2" data-export-hide>
             {VIEWS.map((v) => (
               <button
@@ -600,7 +674,7 @@ export default function Visualizer() {
         </main>
 
         {/* Right params panel */}
-        <aside className="w-full shrink-0 border-t border-border p-4 lg:w-72 lg:border-t-0 lg:border-l lg:overflow-y-auto" data-export-hide>
+        <aside className="w-full shrink-0 border-t border-border p-4 max-h-[45vh] overflow-y-auto lg:max-h-none lg:h-full lg:w-72 lg:border-t-0 lg:border-l" data-export-hide>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Department Color Scheme
           </h2>
