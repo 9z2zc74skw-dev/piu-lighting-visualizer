@@ -59,6 +59,7 @@ export interface SkuType {
   allowWhite: boolean; // whether white is a valid color for this head
   allowTriColor?: boolean; // RBW/BRW heads: allow white as a selectable warning color
   triABR?: boolean; // SignalMaster tri-color A/B/R: warning (R/B) or amber traffic mode
+  smokedLens?: boolean; // smoked-lens variant — fixture reads dark/tinted when off
   solidBar?: boolean; // MicroPulse bar heads (MPS63/MPS123) alternate R then B in
   //                     real life rather than showing a split — render each node
   //                     as a SOLID single color (picked by color1), and auto-build
@@ -192,6 +193,30 @@ export const SKU_TYPES: SkuType[] = [
       // Mounted on the underside of the raised liftgate; activates via OBD when
       // the hatch opens, projecting rearward/down over the officer.
       rearOpen: { x: 40, y: 16, rot: 180 },
+    },
+  },
+  {
+    id: "fs416309rbwsmk",
+    sku: "416309-RBW-SMK",
+    name: "416309 Perimeter — Tri-color RBW, Smoked (1\" round)",
+    group: "hatch",
+    // 416300-Series flush-mount perimeter/warning lighthead. Tri-color
+    // Red/Blue/White LEDs with a smoked lens for a discreet look (reads dark
+    // when off). Ships with two grommet sizes; FSJoin compatible; 5-yr warranty.
+    mount: "Flush-mount perimeter — smoked lens (1\" round, tri-color R/B/W)",
+    shape: "round",
+    segments: 1,
+    spreadDeg: 100,
+    lengthPx: 18,
+    defaultC1: "red",
+    defaultC2: "blue",
+    allowWhite: false,
+    allowTriColor: true,
+    smokedLens: true,
+    defaults: {
+      rear: { x: 38, y: 36, rot: 180 },
+      rearOpen: { x: 60, y: 16, rot: 180 },
+      front: { x: 62, y: 58, rot: 0 },
     },
   },
   {

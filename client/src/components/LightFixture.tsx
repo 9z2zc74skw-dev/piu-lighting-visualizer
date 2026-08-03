@@ -110,6 +110,12 @@ export function LightFixture({ sku, color1, color2, scale = 1 }: Props) {
       : (ASPECT[sku.shape] ?? 4);
   const h = w / aspect;
 
+  // Smoked-lens variants (e.g. 416309-RBW-SMK) read darker/tinted: the lit LED
+  // still shows through, but the lens knocks brightness down and adds a smoky cast.
+  const smokedFilter = sku.smokedLens
+    ? "brightness(0.82) saturate(1.05) contrast(1.08)"
+    : undefined;
+
   return (
     <img
       src={src}
@@ -117,7 +123,14 @@ export function LightFixture({ sku, color1, color2, scale = 1 }: Props) {
       width={w}
       height={h}
       draggable={false}
-      style={{ display: "block", width: `${w}px`, height: `${h}px`, pointerEvents: "none", userSelect: "none" }}
+      style={{
+        display: "block",
+        width: `${w}px`,
+        height: `${h}px`,
+        pointerEvents: "none",
+        userSelect: "none",
+        filter: smokedFilter,
+      }}
     />
   );
 }
