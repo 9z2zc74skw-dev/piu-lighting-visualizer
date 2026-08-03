@@ -78,6 +78,29 @@ export const VEHICLES: VehicleDef[] = [
       hero: { cx: 33, cy: 43, w: 23, rot: -5 },
     },
   },
+  {
+    id: "tahoe_blk",
+    name: "2026 Chevrolet Tahoe PPV (Black)",
+    short: "Chevy Tahoe (Black)",
+    images: {
+      front: "tahoe_blk_front.png",
+      rear: "tahoe_blk_rear.png",
+      rearOpen: "tahoe_blk_rear_open.png",
+      left: "tahoe_blk_left.png",
+      right: "tahoe_blk_right.png",
+      hero: "tahoe_blk_hero.png",
+    },
+    // Same body as the white Tahoe — reuse its fixture nudges and push-bar fit.
+    fixtureNudge: {
+      front: { dx: 0, dy: 2 },
+      rear: { dx: 0, dy: 2 },
+      hero: { dx: 0, dy: 1 },
+    },
+    pushBarPlacement: {
+      front: { cx: 50, cy: 44, w: 30 },
+      hero: { cx: 33, cy: 43, w: 23, rot: -5 },
+    },
+  },
 ];
 
 export const VEHICLE_MAP: Record<string, VehicleDef> = Object.fromEntries(
