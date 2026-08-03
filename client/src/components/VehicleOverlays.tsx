@@ -1,4 +1,5 @@
 import { ViewId, BuildParams, schemeColors, LIGHT_COLOR_MAP } from "@/lib/catalog";
+import { PushBarPlacement } from "@/lib/vehicles";
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -15,6 +16,7 @@ function ilsSprite(params: BuildParams): string {
 interface Props {
   view: ViewId;
   params: BuildParams;
+  pushBarPlacement?: Partial<Record<ViewId, PushBarPlacement>>;
 }
 
 // Alternating LED colors for the interior deck lights, from the dept scheme.
@@ -23,141 +25,37 @@ function deckColors(params: BuildParams): string[] {
   return [LIGHT_COLOR_MAP[run.c1].hex, LIGHT_COLOR_MAP[run.c2].hex];
 }
 
-// Westin HDX Grille Guard — CENTER SECTION ONLY (current customer spec):
-//  • two heavy vertical uprights framing the grille
-//  • a top cross-tube spanning between them
-//  • a perforated punch-plate (Westin logo skid plate) at the bottom center
-//  • textured black powder-coat finish with tubular steel shading
-// The optional PIT / headlight wrap wings are gated behind HDX_WINGS so we can
-// switch them on later if a customer orders the full wrap-around guard.
-const HDX_WINGS = false;
-function PushBar({ view }: { view: ViewId }) {
-  if (view === "front") {
-    // Westin HDX base push bumper (front, straight-on). 0-100 x 0-75 viewBox.
-    // Inverted-U tube frame (top hoop + two side rails) with a full expanded-
-    // metal mesh center panel and a heavy bottom rail.
-    const fx = 38, frw = 24;        // frame left / width
-    const topY = 34, botY = 50;     // frame top / bottom
-    const tw = 1.9;                 // tube thickness
-    const inX = fx + tw, inW = frw - tw * 2;         // mesh interior
-    const inY = topY + tw, inH = botY - topY - tw * 2;
-    return (
-      <g data-testid="overlay-pushbar">
-        <defs>
-          <linearGradient id="hdxTube" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#04060a" />
-            <stop offset="32%" stopColor="#3a4250" />
-            <stop offset="55%" stopColor="#1a1f27" />
-            <stop offset="100%" stopColor="#04060a" />
-          </linearGradient>
-          <linearGradient id="hdxMesh" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#20252d" />
-            <stop offset="45%" stopColor="#12161c" />
-            <stop offset="100%" stopColor="#080a0e" />
-          </linearGradient>
-          {/* fine expanded-metal mesh: diagonal cross weave */}
-          <pattern id="hdxMeshPat" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <rect width="1.4" height="1.4" fill="#0b0e13" />
-            <rect width="0.5" height="1.4" fill="#2b323d" opacity="0.85" />
-            <rect width="1.4" height="0.5" fill="#232a33" opacity="0.7" />
-          </pattern>
-          <clipPath id="hdxMeshClip">
-            <rect x={inX} y={inY} width={inW} height={inH} rx="0.8" />
-          </clipPath>
-        </defs>
-
-        {/* mesh center panel (fills the frame) */}
-        <rect x={inX} y={inY} width={inW} height={inH} rx="0.8" fill="url(#hdxMesh)" />
-        <rect x={inX} y={inY} width={inW} height={inH} rx="0.8" fill="url(#hdxMeshPat)" clipPath="url(#hdxMeshClip)" />
-
-        {/* inverted-U tube frame: top hoop + two side rails, drawn as one path */}
-        <path
-          d={`M${fx} ${botY} L${fx} ${topY + 2.4} Q${fx} ${topY} ${fx + 2.4} ${topY} L${fx + frw - 2.4} ${topY} Q${fx + frw} ${topY} ${fx + frw} ${topY + 2.4} L${fx + frw} ${botY}`}
-          fill="none" stroke="url(#hdxTube)" strokeWidth={tw} strokeLinecap="round" strokeLinejoin="round"
-        />
-        {/* specular highlight along the top hoop */}
-        <path
-          d={`M${fx + 0.6} ${topY + 3} Q${fx + 0.6} ${topY + 0.6} ${fx + 3} ${topY + 0.6} L${fx + frw - 3} ${topY + 0.6}`}
-          fill="none" stroke="#5f6a7a" strokeWidth="0.45" strokeLinecap="round" opacity="0.75"
-        />
-
-        {/* heavy bottom rail across the base */}
-        <rect x={fx - 0.4} y={botY - 1.2} width={frw + 0.8} height="2.4" rx="1.2" fill="url(#hdxTube)" />
-        <rect x={fx + 0.6} y={botY - 0.9} width={frw - 1.2} height="0.5" rx="0.25" fill="#5f6a7a" opacity="0.7" />
-
-        {/* two mounting legs dropping from the bottom rail to the bumper */}
-        <rect x={fx + 4} y={botY + 0.8} width={tw * 0.9} height="3" rx="0.6" fill="url(#hdxTube)" />
-        <rect x={fx + frw - 4 - tw * 0.9} y={botY + 0.8} width={tw * 0.9} height="3" rx="0.6" fill="url(#hdxTube)" />
-
-        {/* optional PIT bars / wing wraps (off by default — gated for later) */}
-        {HDX_WINGS && (
-          <>
-            <path d={`M${fx} ${topY + 2} Q${fx - 6} ${topY + 3} ${fx - 8} ${botY - 1}`}
-              fill="none" stroke="url(#hdxTube)" strokeWidth={tw} strokeLinecap="round" />
-            <path d={`M${fx + frw} ${topY + 2} Q${fx + frw + 6} ${topY + 3} ${fx + frw + 8} ${botY - 1}`}
-              fill="none" stroke="url(#hdxTube)" strokeWidth={tw} strokeLinecap="round" />
-          </>
-        )}
-      </g>
-    );
-  }
-  if (view === "hero") {
-    // 3/4 hero: HDX base push bumper, foreshortened & rotated onto the fascia.
-    const fx = 22, frw = 22;
-    const topY = 33, botY = 49;
-    const tw = 1.8;
-    const inX = fx + tw, inW = frw - tw * 2;
-    const inY = topY + tw, inH = botY - topY - tw * 2;
-    return (
-      <g data-testid="overlay-pushbar" transform="rotate(-5 33 44)">
-        <defs>
-          <linearGradient id="hdxTube2" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#04060a" />
-            <stop offset="32%" stopColor="#3a4250" />
-            <stop offset="55%" stopColor="#1a1f27" />
-            <stop offset="100%" stopColor="#04060a" />
-          </linearGradient>
-          <linearGradient id="hdxMesh2" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#20252d" />
-            <stop offset="45%" stopColor="#12161c" />
-            <stop offset="100%" stopColor="#080a0e" />
-          </linearGradient>
-          <pattern id="hdxMeshPat2" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <rect width="1.4" height="1.4" fill="#0b0e13" />
-            <rect width="0.5" height="1.4" fill="#2b323d" opacity="0.85" />
-            <rect width="1.4" height="0.5" fill="#232a33" opacity="0.7" />
-          </pattern>
-          <clipPath id="hdxMeshClip2">
-            <rect x={inX} y={inY} width={inW} height={inH} rx="0.8" />
-          </clipPath>
-        </defs>
-        {/* mesh center panel */}
-        <rect x={inX} y={inY} width={inW} height={inH} rx="0.8" fill="url(#hdxMesh2)" />
-        <rect x={inX} y={inY} width={inW} height={inH} rx="0.8" fill="url(#hdxMeshPat2)" clipPath="url(#hdxMeshClip2)" />
-        {/* inverted-U tube frame */}
-        <path
-          d={`M${fx} ${botY} L${fx} ${topY + 2.2} Q${fx} ${topY} ${fx + 2.2} ${topY} L${fx + frw - 2.2} ${topY} Q${fx + frw} ${topY} ${fx + frw} ${topY + 2.2} L${fx + frw} ${botY}`}
-          fill="none" stroke="url(#hdxTube2)" strokeWidth={tw} strokeLinecap="round" strokeLinejoin="round"
-        />
-        <path
-          d={`M${fx + 0.5} ${topY + 2.6} Q${fx + 0.5} ${topY + 0.5} ${fx + 2.6} ${topY + 0.5} L${fx + frw - 2.6} ${topY + 0.5}`}
-          fill="none" stroke="#5f6a7a" strokeWidth="0.4" strokeLinecap="round" opacity="0.75"
-        />
-        {/* heavy bottom rail */}
-        <rect x={fx - 0.4} y={botY - 1.1} width={frw + 0.8} height="2.2" rx="1.1" fill="url(#hdxTube2)" />
-        <rect x={fx + 0.6} y={botY - 0.8} width={frw - 1.2} height="0.45" rx="0.22" fill="#5f6a7a" opacity="0.7" />
-        {/* mounting legs */}
-        <rect x={fx + 3.5} y={botY + 0.6} width={tw * 0.9} height="2.6" rx="0.55" fill="url(#hdxTube2)" />
-        <rect x={fx + frw - 3.5 - tw * 0.9} y={botY + 0.6} width={tw * 0.9} height="2.6" rx="0.55" fill="url(#hdxTube2)" />
-        {/* optional PIT bars / wing wraps (off by default) */}
-        {HDX_WINGS && (
-          <path d={`M${fx + frw} ${topY + 2} Q${fx + frw + 5} ${topY + 3} ${fx + frw + 6} ${botY - 1}`}
-            fill="none" stroke="url(#hdxTube2)" strokeWidth={tw} strokeLinecap="round" />
-        )}
-      </g>
-    );
-  }
-  return null;
+// Westin HDX Grille Guard (base "Push Bumper"). Rendered from the real Westin
+// product photo (fx_pushbar_front.png) keyed to transparency, so the honeycomb
+// mesh, curved outer uprights and low tube read exactly like the actual part.
+// The image is placed per-vehicle via PushBarPlacement (center + width + rot)
+// so it sits correctly on each body's grille.
+// PIT bars / headlight wing-wraps are separate Westin accessories; add them as
+// their own keyed overlays + quote line items when a customer orders them.
+const PUSHBAR_ASPECT = 810 / 630; // intrinsic w/h of the keyed product image
+function PushBar({ place }: { place?: PushBarPlacement }) {
+  if (!place) return null;
+  const w = place.w;
+  const h = w / PUSHBAR_ASPECT;
+  const x = place.cx - w / 2;
+  const y = place.cy - h / 2;
+  const rot = place.rot ?? 0;
+  return (
+    <g
+      data-testid="overlay-pushbar"
+      transform={rot ? `rotate(${rot} ${place.cx} ${place.cy})` : undefined}
+    >
+      <image
+        href={`${BASE}fx/fx_pushbar_front.png`}
+        x={x}
+        y={y}
+        width={w}
+        height={h}
+        preserveAspectRatio="none"
+        style={{ filter: "drop-shadow(0 0.4px 0.8px rgba(0,0,0,0.55))" }}
+      />
+    </g>
+  );
 }
 
 // A slim interior deck/light-bar drawn as a real fixture: dark housing with a
@@ -252,7 +150,8 @@ function RearHatchLights({ view, colors }: { view: ViewId; colors: string[] }) {
   return null;
 }
 
-export function VehicleOverlays({ view, params }: Props) {
+export function VehicleOverlays({ view, params, pushBarPlacement }: Props) {
+  const pbPlace = pushBarPlacement?.[view];
   return (
     <svg
       viewBox="0 0 100 75"
@@ -276,7 +175,7 @@ export function VehicleOverlays({ view, params }: Props) {
           <stop offset="100%" stopColor="rgba(255,255,255,0)" />
         </radialGradient>
       </defs>
-      {params.pushBar && <PushBar view={view} />}
+      {params.pushBar && <PushBar place={pbPlace} />}
       {params.dashLighting && <DashLighting view={view} sprite={ilsSprite(params)} />}
       {params.rearHatchLights && <RearHatchLights view={view} colors={deckColors(params)} />}
     </svg>

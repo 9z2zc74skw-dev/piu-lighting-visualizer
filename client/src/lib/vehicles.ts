@@ -9,6 +9,16 @@
 
 import { ViewId } from "./catalog";
 
+// Placement for the Westin HDX push bar image overlay within the 0-100 x 0-75
+// viewBox. cx/cy = center of the guard; w = width in viewBox units (height is
+// derived from the image aspect). rot = optional rotation (deg) for 3/4 views.
+export interface PushBarPlacement {
+  cx: number;
+  cy: number;
+  w: number;
+  rot?: number;
+}
+
 export interface VehicleDef {
   id: string;
   name: string; // full display name
@@ -17,6 +27,11 @@ export interface VehicleDef {
   images: Record<ViewId, string>;
   // optional per-view {dx,dy} percent nudge applied to shared fixture defaults
   fixtureNudge?: Partial<Record<ViewId, { dx: number; dy: number }>>;
+  // optional per-view placement for the Westin HDX push bar overlay. The base
+  // HDX geometry is authored for the Ford PIU grille; each other body scales &
+  // shifts it to sit on its own grille. tx/ty are percent offsets in the
+  // 0-100 x 0-75 viewBox; scale is about the guard's own center.
+  pushBarPlacement?: Partial<Record<ViewId, PushBarPlacement>>;
 }
 
 export const VEHICLES: VehicleDef[] = [
@@ -31,6 +46,10 @@ export const VEHICLES: VehicleDef[] = [
       left: "piu_left.png",
       right: "piu_right.png",
       hero: "piu_hero.png",
+    },
+    pushBarPlacement: {
+      front: { cx: 50, cy: 41, w: 30 },
+      hero: { cx: 32, cy: 40, w: 23, rot: -5 },
     },
   },
   {
@@ -51,6 +70,12 @@ export const VEHICLES: VehicleDef[] = [
       front: { dx: 0, dy: 2 },
       rear: { dx: 0, dy: 2 },
       hero: { dx: 0, dy: 1 },
+    },
+    // Tahoe grille sits lower and is wider/shorter than the PIU. Drop the guard
+    // down onto the lower grille opening and size it to the Tahoe fascia.
+    pushBarPlacement: {
+      front: { cx: 50, cy: 44, w: 30 },
+      hero: { cx: 33, cy: 43, w: 23, rot: -5 },
     },
   },
 ];

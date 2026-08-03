@@ -570,7 +570,7 @@ export default function Visualizer() {
               className="absolute inset-0 h-full w-full object-contain"
               draggable={false}
             />
-            <VehicleOverlays view={activeView} params={params} />
+            <VehicleOverlays view={activeView} params={params} pushBarPlacement={vehicle.pushBarPlacement} />
             {viewNodes.map((n) => (
               <LightNodeMarker
                 key={n.id}
