@@ -110,6 +110,15 @@ export default function Visualizer() {
   // temporarily overrides collapse so all matches are visible.
   const [paletteQuery, setPaletteQuery] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  // Per-family selected variant (SKU id) for the palette dropdowns. Seeded from
+  // each family's `familyDefault` variant on first render.
+  const [familyVariant, setFamilyVariant] = useState<Record<string, string>>(() => {
+    const seed: Record<string, string> = {};
+    for (const t of SKU_TYPES) {
+      if (t.family && (t.familyDefault || !seed[t.family])) seed[t.family] = t.id;
+    }
+    return seed;
+  });
 
   const stageRef = useRef<HTMLDivElement>(null);
   const dragType = useRef<string | null>(null);
@@ -524,6 +533,16 @@ export default function Visualizer() {
                 );
                 if (items.length === 0) return null;
                 shown += items.length;
+                // visible row count: families collapse to a single row
+                const famsSeen = new Set<string>();
+                let rowCount = 0;
+                for (const t of items) {
+                  if (t.family) {
+                    if (famsSeen.has(t.family)) continue;
+                    famsSeen.add(t.family);
+                  }
+                  rowCount++;
+                }
                 const collapsed = !searching && collapsedGroups[group];
                 return (
                   <div key={group} className="mb-1.5">
@@ -540,40 +559,111 @@ export default function Visualizer() {
                         <ChevronDown className="h-3 w-3" />
                       )}
                       {GROUP_LABELS[group]}
-                      <span className="ml-1 font-normal text-muted-foreground">({items.length})</span>
+                      <span className="ml-1 font-normal text-muted-foreground">({rowCount})</span>
                     </button>
                     {!collapsed && (
                       <div className="mt-0.5">
-                        {items.map((t) => (
-                          <div
-                            key={t.id}
-                            draggable
-                            onDragStart={() => (dragType.current = t.id)}
-                            onClick={() => addNode(t.id)}
-                            title={`${t.name} — ${t.mount}\n(drag onto vehicle, or click to drop at suggested mount)`}
-                            className="group flex cursor-grab items-center gap-2 rounded px-1.5 py-1 hover-elevate active:cursor-grabbing"
-                            data-testid={`palette-${t.id}`}
-                          >
-                            <div className="flex h-4 w-7 shrink-0 items-center justify-center">
-                              <LightFixture sku={t} color1={t.defaultC1} color2={t.defaultC2} scale={0.55} />
-                            </div>
-                            <span className="shrink-0 font-mono text-[11px] font-semibold">{t.sku}</span>
-                            <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
-                              {t.name}
-                            </span>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                addNode(t.id);
-                              }}
-                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-secondary text-secondary-foreground opacity-0 hover-elevate group-hover:opacity-100"
-                              title="Drop at suggested mount"
-                              data-testid={`button-add-${t.id}`}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
+                        {(() => {
+                          // Build an ordered list of entries: a family appears
+                          // once (at its first variant's position) as a single
+                          // row with a variant dropdown; standalone SKUs render
+                          // as normal rows.
+                          const seenFamilies = new Set<string>();
+                          const entries: JSX.Element[] = [];
+                          for (const t of items) {
+                            if (t.family) {
+                              if (seenFamilies.has(t.family)) continue;
+                              seenFamilies.add(t.family);
+                              const variants = SKU_TYPES.filter((s) => s.family === t.family);
+                              // active variant: honor current selection if it's
+                              // still in the (possibly filtered) list, else first.
+                              const selId =
+                                variants.find((v) => v.id === familyVariant[t.family!])?.id ??
+                                variants[0].id;
+                              const active = SKU_MAP[selId];
+                              entries.push(
+                                <div
+                                  key={`fam-${t.family}`}
+                                  className="group flex items-center gap-2 rounded px-1.5 py-1 hover-elevate"
+                                  data-testid={`palette-family-${t.family}`}
+                                >
+                                  <div
+                                    draggable
+                                    onDragStart={() => (dragType.current = selId)}
+                                    onClick={() => addNode(selId)}
+                                    title={`${active.name} — ${active.mount}\n(drag onto vehicle, or click to drop at suggested mount)`}
+                                    className="flex shrink-0 cursor-grab items-center gap-2 active:cursor-grabbing"
+                                    data-testid={`palette-${selId}`}
+                                  >
+                                    <div className="flex h-4 w-7 shrink-0 items-center justify-center">
+                                      <LightFixture sku={active} color1={active.defaultC1} color2={active.defaultC2} scale={0.55} />
+                                    </div>
+                                    <span className="shrink-0 font-mono text-[11px] font-semibold">
+                                      {(active.familyName ?? active.sku).split(" (")[0]}
+                                    </span>
+                                  </div>
+                                  <select
+                                    value={selId}
+                                    onChange={(e) =>
+                                      setFamilyVariant((prev) => ({ ...prev, [t.family!]: e.target.value }))
+                                    }
+                                    className="min-w-0 flex-1 truncate rounded border border-border bg-background px-1 py-0.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                                    data-testid={`palette-variant-${t.family}`}
+                                  >
+                                    {variants.map((v) => (
+                                      <option key={v.id} value={v.id}>
+                                        {v.variantLabel ?? v.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      addNode(selId);
+                                    }}
+                                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-secondary text-secondary-foreground opacity-0 hover-elevate group-hover:opacity-100"
+                                    title="Drop selected variant at suggested mount"
+                                    data-testid={`button-add-family-${t.family}`}
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                  </button>
+                                </div>,
+                              );
+                            } else {
+                              entries.push(
+                                <div
+                                  key={t.id}
+                                  draggable
+                                  onDragStart={() => (dragType.current = t.id)}
+                                  onClick={() => addNode(t.id)}
+                                  title={`${t.name} — ${t.mount}\n(drag onto vehicle, or click to drop at suggested mount)`}
+                                  className="group flex cursor-grab items-center gap-2 rounded px-1.5 py-1 hover-elevate active:cursor-grabbing"
+                                  data-testid={`palette-${t.id}`}
+                                >
+                                  <div className="flex h-4 w-7 shrink-0 items-center justify-center">
+                                    <LightFixture sku={t} color1={t.defaultC1} color2={t.defaultC2} scale={0.55} />
+                                  </div>
+                                  <span className="shrink-0 font-mono text-[11px] font-semibold">{t.sku}</span>
+                                  <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
+                                    {t.name}
+                                  </span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      addNode(t.id);
+                                    }}
+                                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-secondary text-secondary-foreground opacity-0 hover-elevate group-hover:opacity-100"
+                                    title="Drop at suggested mount"
+                                    data-testid={`button-add-${t.id}`}
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                  </button>
+                                </div>,
+                              );
+                            }
+                          }
+                          return entries;
+                        })()}
                       </div>
                     )}
                   </div>

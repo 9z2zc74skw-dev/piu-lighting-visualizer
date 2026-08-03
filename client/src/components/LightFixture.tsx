@@ -93,12 +93,16 @@ function spriteFor(sku: SkuType, c1: LightColorId, c2: LightColorId): string | n
       return `${BASE}fx/${pfx}_rb.png`;
     }
     case "round": {
-      const c = c1 === "blue" ? "b" : c1 === "amber" ? "a" : "r";
-      // Smoked-lens variants (416309-RBW-SMK) use dedicated dark-lens sprites.
-      // Only red/blue smoked sprites exist (tri-color R/B/W warning); amber
-      // falls back to the clear amber head.
-      if (sku.smokedLens && c !== "a") return `${BASE}fx/fx_round_smk_${c}.png`;
-      return `${BASE}fx/fx_round_${c}.png`;
+      // Tri-color R/B/W perimeter round: in warning mode it flashes red AND blue,
+      // so the default (c1 != c2) node renders a red/blue split dome sprite
+      // (mirrors the DynaFlare stick). Forcing the node to a single solid color
+      // (c1 == c2), or an amber head, falls back to that color's solid sprite.
+      const amber = c1 === "amber" || c2 === "amber";
+      const smk = sku.smokedLens ? "fx_round_smk" : "fx_round";
+      if (amber) return `${BASE}fx/fx_round_a.png`;
+      if (sku.allowTriColor && c1 !== c2) return `${BASE}fx/${smk}_rb.png`;
+      const c = c1 === "blue" ? "b" : "r";
+      return `${BASE}fx/${smk}_${c}.png`;
     }
     default:
       return null;

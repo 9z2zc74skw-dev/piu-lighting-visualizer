@@ -61,6 +61,15 @@ export interface SkuType {
   baseW?: number; // optional on-stage width override (px) for shapes whose
   //                 physical length varies by SKU (e.g. DynaFlare DR1-DR4).
   //                 When set, overrides the shape's default BASE_W.
+  family?: string; // light-family key. SKUs sharing a family collapse into ONE
+  //                 palette row with a variant dropdown (e.g. all DynaFlare
+  //                 lengths/lenses). Omit for standalone single-variant parts.
+  familyName?: string; // display name of the family row (shown once, e.g.
+  //                     "DynaFlare (Perimeter Stick)").
+  variantLabel?: string; // short label for this variant in the family dropdown
+  //                       (e.g. "1 ft · Clear"). Falls back to `name`.
+  familyDefault?: boolean; // this variant is the one selected first when the
+  //                        family row loads.
   defaultC1: LightColorId; // default primary color
   defaultC2: LightColorId; // default secondary color (split heads)
   allowWhite: boolean; // whether white is a valid color for this head
@@ -145,6 +154,10 @@ export const SKU_TYPES: SkuType[] = [
   // brackets. Clear-lens DR1-RBW and smoked-lens DR1-RBW-SMK.
   {
     id: "dr1rbw",
+    family: "dynaflare",
+    familyName: "DynaFlare (Perimeter Stick)",
+    variantLabel: "1 ft · Clear",
+    familyDefault: true,
     sku: "DR1-RBW",
     name: "DynaFlare DR1 — 1ft, Tri-color RBW (Clear)",
     group: "front",
@@ -166,6 +179,9 @@ export const SKU_TYPES: SkuType[] = [
   },
   {
     id: "dr1rbwsmk",
+    family: "dynaflare",
+    familyName: "DynaFlare (Perimeter Stick)",
+    variantLabel: "1 ft · Smoked",
     sku: "DR1-RBW-SMK",
     name: "DynaFlare DR1 — 1ft, Tri-color RBW (Smoked)",
     group: "front",
@@ -189,6 +205,9 @@ export const SKU_TYPES: SkuType[] = [
   // DynaFlare 2-foot (DR2) — same slim body, ~2x length.
   {
     id: "dr2rbw",
+    family: "dynaflare",
+    familyName: "DynaFlare (Perimeter Stick)",
+    variantLabel: "2 ft · Clear",
     sku: "DR2-RBW",
     name: "DynaFlare DR2 — 2ft, Tri-color RBW (Clear)",
     group: "front",
@@ -211,6 +230,9 @@ export const SKU_TYPES: SkuType[] = [
   },
   {
     id: "dr2rbwsmk",
+    family: "dynaflare",
+    familyName: "DynaFlare (Perimeter Stick)",
+    variantLabel: "2 ft · Smoked",
     sku: "DR2-RBW-SMK",
     name: "DynaFlare DR2 — 2ft, Tri-color RBW (Smoked)",
     group: "front",
@@ -235,6 +257,9 @@ export const SKU_TYPES: SkuType[] = [
   // DynaFlare 3-foot (DR3).
   {
     id: "dr3rbw",
+    family: "dynaflare",
+    familyName: "DynaFlare (Perimeter Stick)",
+    variantLabel: "3 ft · Clear",
     sku: "DR3-RBW",
     name: "DynaFlare DR3 — 3ft, Tri-color RBW (Clear)",
     group: "front",
@@ -257,6 +282,9 @@ export const SKU_TYPES: SkuType[] = [
   },
   {
     id: "dr3rbwsmk",
+    family: "dynaflare",
+    familyName: "DynaFlare (Perimeter Stick)",
+    variantLabel: "3 ft · Smoked",
     sku: "DR3-RBW-SMK",
     name: "DynaFlare DR3 — 3ft, Tri-color RBW (Smoked)",
     group: "front",
@@ -281,6 +309,9 @@ export const SKU_TYPES: SkuType[] = [
   // DynaFlare 4-foot (DR4) — full-width perimeter stick.
   {
     id: "dr4rbw",
+    family: "dynaflare",
+    familyName: "DynaFlare (Perimeter Stick)",
+    variantLabel: "4 ft · Clear",
     sku: "DR4-RBW",
     name: "DynaFlare DR4 — 4ft, Tri-color RBW (Clear)",
     group: "front",
@@ -303,6 +334,9 @@ export const SKU_TYPES: SkuType[] = [
   },
   {
     id: "dr4rbwsmk",
+    family: "dynaflare",
+    familyName: "DynaFlare (Perimeter Stick)",
+    variantLabel: "4 ft · Smoked",
     sku: "DR4-RBW-SMK",
     name: "DynaFlare DR4 — 4ft, Tri-color RBW (Smoked)",
     group: "front",
@@ -328,6 +362,9 @@ export const SKU_TYPES: SkuType[] = [
   // catalog size; built to order). Same slim body, ~5x DR1.
   {
     id: "dr5rbw",
+    family: "dynaflare",
+    familyName: "DynaFlare (Perimeter Stick)",
+    variantLabel: "5 ft · Clear (custom)",
     sku: "DR5-RBW",
     name: "DynaFlare DR5 — 5ft, Tri-color RBW (Clear, custom)",
     group: "front",
@@ -350,6 +387,9 @@ export const SKU_TYPES: SkuType[] = [
   },
   {
     id: "dr5rbwsmk",
+    family: "dynaflare",
+    familyName: "DynaFlare (Perimeter Stick)",
+    variantLabel: "5 ft · Smoked (custom)",
     sku: "DR5-RBW-SMK",
     name: "DynaFlare DR5 — 5ft, Tri-color RBW (Smoked, custom)",
     group: "front",
@@ -374,6 +414,9 @@ export const SKU_TYPES: SkuType[] = [
   // DynaFlare 6-foot (DR6) — CUSTOM extended length (built to order).
   {
     id: "dr6rbw",
+    family: "dynaflare",
+    familyName: "DynaFlare (Perimeter Stick)",
+    variantLabel: "6 ft · Clear (custom)",
     sku: "DR6-RBW",
     name: "DynaFlare DR6 — 6ft, Tri-color RBW (Clear, custom)",
     group: "front",
@@ -396,6 +439,9 @@ export const SKU_TYPES: SkuType[] = [
   },
   {
     id: "dr6rbwsmk",
+    family: "dynaflare",
+    familyName: "DynaFlare (Perimeter Stick)",
+    variantLabel: "6 ft · Smoked (custom)",
     sku: "DR6-RBW-SMK",
     name: "DynaFlare DR6 — 6ft, Tri-color RBW (Smoked, custom)",
     group: "front",
@@ -462,6 +508,10 @@ export const SKU_TYPES: SkuType[] = [
   },
   {
     id: "fs416300",
+    family: "fs416round",
+    familyName: "416300 Perimeter (1\" round)",
+    variantLabel: "Clear lens",
+    familyDefault: true,
     sku: "416300",
     name: "416300 Perimeter (1\" round)",
     group: "hatch",
@@ -482,6 +532,9 @@ export const SKU_TYPES: SkuType[] = [
   },
   {
     id: "fs416309rbwsmk",
+    family: "fs416round",
+    familyName: "416300 Perimeter (1\" round)",
+    variantLabel: "Smoked lens",
     sku: "416309-RBW-SMK",
     name: "416309 Perimeter — Tri-color RBW, Smoked (1\" round)",
     group: "hatch",
