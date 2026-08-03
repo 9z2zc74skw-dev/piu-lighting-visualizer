@@ -14,3 +14,4 @@ data.db-journal
 
 *.log
 .DS_Store
+fx/_round_orig/
