@@ -78,11 +78,19 @@ function spriteFor(sku: SkuType, c1: LightColorId, c2: LightColorId): string | n
       return `${BASE}fx/fx_stick_${pairKey(c1, c2)}.png`;
     }
     case "dyna": {
-      // DynaFlare renders SOLID single-color per node (alternates R/B). Smoked
-      // variants use dedicated dark-lens sprites; only red/blue are stocked.
-      const c = solidKey(c1) === "b" ? "b" : "r";
-      if (sku.smokedLens) return `${BASE}fx/fx_dyna_smk_${c}.png`;
-      return `${BASE}fx/fx_dyna_${c}.png`;
+      // DynaFlare is a tri-color R/B/W perimeter stick. In warning mode it shows
+      // red AND blue across the bar, so the default (split) node renders a
+      // red/blue split sprite. If the user forces the node to a single solid
+      // color, fall back to that color's solid sprite. Smoked variants use
+      // dedicated dark-lens sprites.
+      const pfx = sku.smokedLens ? "fx_dyna_smk" : "fx_dyna";
+      const solid = c1 === c2;
+      if (solid) {
+        const c = solidKey(c1) === "b" ? "b" : "r"; // only red/blue solids exist
+        return `${BASE}fx/${pfx}_${c}.png`;
+      }
+      // split R/B warning look (both clear and smoked have an _rb split sprite)
+      return `${BASE}fx/${pfx}_rb.png`;
     }
     case "round": {
       const c = c1 === "blue" ? "b" : c1 === "amber" ? "a" : "r";
@@ -116,7 +124,7 @@ export function LightFixture({ sku, color1, color2, scale = 1 }: Props) {
   const src = spriteFor(sku, color1, color2);
   if (!src) return null;
 
-  const w = (BASE_W[sku.shape] ?? 40) * scale;
+  const w = (sku.baseW ?? BASE_W[sku.shape] ?? 40) * scale;
   const aspect =
     sku.solidBar && (sku.shape === "bar" || sku.shape === "module")
       ? BAR_SOLID_ASPECT
