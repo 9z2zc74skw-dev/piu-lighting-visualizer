@@ -93,15 +93,22 @@ function spriteFor(sku: SkuType, c1: LightColorId, c2: LightColorId): string | n
       return `${BASE}fx/${pfx}_rb.png`;
     }
     case "round": {
-      // Tri-color R/B/W perimeter round: in warning mode it flashes red AND blue,
-      // so the default (c1 != c2) node renders a red/blue split dome sprite
-      // (mirrors the DynaFlare stick). Forcing the node to a single solid color
-      // (c1 == c2), or an amber head, falls back to that color's solid sprite.
+      // Tri-color R/B/W perimeter round: in warning mode it flashes two colors,
+      // so a two-color node (c1 != c2) renders a split dome sprite (mirrors the
+      // DynaFlare stick). OK depts run Red/Blue; AR depts run Blue/White. Forcing
+      // the node to a single solid color (c1 == c2), or an amber head, falls back
+      // to that color's solid sprite.
       const amber = c1 === "amber" || c2 === "amber";
       const smk = sku.smokedLens ? "fx_round_smk" : "fx_round";
       if (amber) return `${BASE}fx/fx_round_a.png`;
-      if (sku.allowTriColor && c1 !== c2) return `${BASE}fx/${smk}_rb.png`;
-      const c = c1 === "blue" ? "b" : "r";
+      if (sku.allowTriColor && c1 !== c2) {
+        const hasW = c1 === "white" || c2 === "white";
+        const hasR = c1 === "red" || c2 === "red";
+        // Blue/White split (no red) -> _bw; otherwise the Red/Blue split -> _rb.
+        const pair = hasW && !hasR ? "bw" : "rb";
+        return `${BASE}fx/${smk}_${pair}.png`;
+      }
+      const c = c1 === "blue" ? "b" : c1 === "white" ? "w" : "r";
       return `${BASE}fx/${smk}_${c}.png`;
     }
     default:

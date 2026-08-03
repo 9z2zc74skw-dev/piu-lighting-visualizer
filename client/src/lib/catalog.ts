@@ -548,7 +548,7 @@ export const SKU_TYPES: SkuType[] = [
     lengthPx: 18,
     defaultC1: "red",
     defaultC2: "blue",
-    allowWhite: false,
+    allowWhite: true, // -RBW head: Red/Blue/White capable (AR depts run Blue/White)
     allowTriColor: true,
     smokedLens: true,
     defaults: {
