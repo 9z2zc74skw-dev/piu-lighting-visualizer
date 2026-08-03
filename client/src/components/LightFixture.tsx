@@ -60,18 +60,22 @@ function solidKey(c1: LightColorId): "r" | "b" | "w" {
 
 function spriteFor(sku: SkuType, c1: LightColorId, c2: LightColorId): string | null {
   switch (sku.shape) {
-    case "bar":
+    case "bar": {
       // MicroPulse bars (MPS63 / MPS123): a single head splits half c1 / half c2
-      // (e.g. red/blue) across its own LEDs. Only render a single solid color if
-      // both colors are truly the same.
-      if (c1 === c2) return `${BASE}fx/fx_bar_${solidKey(c1)}.png`;
-      return `${BASE}fx/fx_bar_${pairKey(c1, c2)}.png`;
+      // (e.g. red/blue) across its own LEDs. Smoked-lens variants use the darker
+      // tinted sprite. Only render a single solid color if both colors match.
+      const smk = sku.smokedLens ? "_smk" : "";
+      if (c1 === c2) return `${BASE}fx/fx_bar${smk}_${solidKey(c1)}.png`;
+      return `${BASE}fx/fx_bar${smk}_${pairKey(c1, c2)}.png`;
+    }
     case "wide":
       return `${BASE}fx/fx_wide_${pairKey(c1, c2)}.png`;
-    case "module":
+    case "module": {
       // no dedicated module sprite yet; reuse the slim bar head
-      if (c1 === c2) return `${BASE}fx/fx_bar_${solidKey(c1)}.png`;
-      return `${BASE}fx/fx_bar_${pairKey(c1, c2)}.png`;
+      const smk = sku.smokedLens ? "_smk" : "";
+      if (c1 === c2) return `${BASE}fx/fx_bar${smk}_${solidKey(c1)}.png`;
+      return `${BASE}fx/fx_bar${smk}_${pairKey(c1, c2)}.png`;
+    }
     case "stick": {
       // amber traffic advisor (rear directional); otherwise SignalMaster in the
       // dept scheme: blue/white when white is present, else red/blue.
