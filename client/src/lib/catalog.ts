@@ -36,7 +36,11 @@ export const GROUP_LABELS: Record<SkuGroup, string> = {
 // round = 1-inch round grommet-mount perimeter light (416300 Series)
 // equip = siren/control equipment box (no warning color)
 // scene = takedown/scene flood (white only)
-export type FixtureShape = "bar" | "wide" | "stick" | "module" | "round" | "equip" | "scene";
+// dyna = slim DynaFlare linear perimeter stick (DR1/DR2/DR3/DR4). Renders as a
+//        SOLID single-color per node (alternates R/B like MicroPulse bars); the
+//        `lengthPx` scales with the DynaFlare foot-length. Smoked variants use
+//        dedicated dark-lens sprites.
+export type FixtureShape = "bar" | "wide" | "stick" | "module" | "round" | "dyna" | "equip" | "scene";
 
 // Mounting orientation of a fixture's long axis. Horizontal = across (typical
 // grille/visor); vertical = up/down (e.g. MPS1200-series on the rear hatch
@@ -130,6 +134,53 @@ export const SKU_TYPES: SkuType[] = [
     defaults: {
       front: { x: 50, y: 30, rot: 0 },
       hero: { x: 45, y: 27, rot: -15 },
+    },
+  },
+  // Federal Signal DynaFlare linear perimeter stick (1-foot DR1). Tri-color
+  // Red/Blue/White; also made in 2/3/4-foot (DR2/DR3/DR4). Mounts via
+  // SignalMaster/Latitude brackets, push-bumper top channels, or rear-window
+  // brackets. Clear-lens DR1-RBW and smoked-lens DR1-RBW-SMK.
+  {
+    id: "dr1rbw",
+    sku: "DR1-RBW",
+    name: "DynaFlare DR1 — 1ft, Tri-color RBW (Clear)",
+    group: "front",
+    mount: "DynaFlare 1ft perimeter stick — grille / push-bumper channel / visor",
+    shape: "dyna",
+    segments: 1,
+    spreadDeg: 90,
+    lengthPx: 62,
+    defaultC1: "red",
+    defaultC2: "blue",
+    allowWhite: false,
+    allowTriColor: true,
+    solidBar: true,
+    defaults: {
+      front: { x: 50, y: 62, rot: 0 },
+      hero: { x: 34, y: 60, rot: -6 },
+      rear: { x: 50, y: 30, rot: 180 },
+    },
+  },
+  {
+    id: "dr1rbwsmk",
+    sku: "DR1-RBW-SMK",
+    name: "DynaFlare DR1 — 1ft, Tri-color RBW (Smoked)",
+    group: "front",
+    mount: "DynaFlare 1ft perimeter stick, smoked lens — grille / channel / visor",
+    shape: "dyna",
+    segments: 1,
+    spreadDeg: 90,
+    lengthPx: 62,
+    defaultC1: "red",
+    defaultC2: "blue",
+    allowWhite: false,
+    allowTriColor: true,
+    solidBar: true,
+    smokedLens: true,
+    defaults: {
+      front: { x: 50, y: 62, rot: 0 },
+      hero: { x: 34, y: 60, rot: -6 },
+      rear: { x: 50, y: 30, rot: 180 },
     },
   },
   // Rear hatch warning cluster (separate nodes)

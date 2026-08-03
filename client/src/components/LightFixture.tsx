@@ -25,6 +25,7 @@ const ASPECT: Record<string, number> = {
   module: 3.97,
   stick: 11.3,
   round: 1.02,
+  dyna: 11, // slim DynaFlare linear stick (fixed so R/B nodes match)
 };
 
 // solid single-color bars have a slightly different intrinsic aspect
@@ -39,6 +40,7 @@ const BASE_W: Record<string, number> = {
   module: 18,
   stick: 60,
   round: 9,
+  dyna: 60, // 1-foot DynaFlare (DR1); longer models scale via lengthPx
 };
 
 function pairKey(c1: LightColorId, c2: LightColorId): "rb" | "bw" {
@@ -74,6 +76,13 @@ function spriteFor(sku: SkuType, c1: LightColorId, c2: LightColorId): string | n
       const amber = c1 === "amber" || c2 === "amber";
       if (amber) return `${BASE}fx/fx_stick_amber.png`;
       return `${BASE}fx/fx_stick_${pairKey(c1, c2)}.png`;
+    }
+    case "dyna": {
+      // DynaFlare renders SOLID single-color per node (alternates R/B). Smoked
+      // variants use dedicated dark-lens sprites; only red/blue are stocked.
+      const c = solidKey(c1) === "b" ? "b" : "r";
+      if (sku.smokedLens) return `${BASE}fx/fx_dyna_smk_${c}.png`;
+      return `${BASE}fx/fx_dyna_${c}.png`;
     }
     case "round": {
       const c = c1 === "blue" ? "b" : c1 === "amber" ? "a" : "r";
