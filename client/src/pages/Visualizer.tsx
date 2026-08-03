@@ -148,20 +148,41 @@ export default function Visualizer() {
       // Tri-color heads adopt the current department run scheme; others use their
       // own default colors.
       const run = schemeColors(params.colorScheme);
-      const node: LightNode = {
-        id: uid(typeId),
-        view: activeView,
-        typeId,
-        color1: type.allowTriColor ? run.c1 : type.defaultC1,
-        color2: type.allowTriColor ? run.c2 : type.defaultC2,
-        x: x ?? def?.x ?? 50,
-        y: y ?? def?.y ?? 50,
-        rotation: def?.rot ?? (activeView === "rear" ? 180 : 0),
-        orientation: type.defaultOrientation ?? "horizontal",
-        label: type.sku,
-      };
-      setNodes((prev) => [...prev, node]);
-      setSelectedId(node.id);
+      // Solid MicroPulse bars show ONE color per node and ALTERNATE across the
+      // grille (run.c1, run.c2, run.c1 …). Pick the color by how many of this SKU
+      // already sit in this view so a Red/Blue dept lays down R,B,R,B…
+      const c1 = type.allowTriColor ? run.c1 : type.defaultC1;
+      const c2 = type.allowTriColor ? run.c2 : type.defaultC2;
+      const nodeId = uid(typeId);
+      setNodes((prev) => {
+        // Solid MicroPulse bars show ONE color per node and ALTERNATE across the
+        // grille (run.c1, run.c2, …). Count same-type nodes in CURRENT state
+        // (prev) so alternation is correct even on rapid successive drops.
+        let nc1 = c1;
+        let nc2 = c2;
+        if (type.solidBar && type.allowTriColor) {
+          const sameCount = prev.filter(
+            (n) => n.view === activeView && n.typeId === typeId,
+          ).length;
+          const solid = sameCount % 2 === 0 ? run.c1 : run.c2;
+          nc1 = solid;
+          nc2 = solid; // c1 === c2 => renderer draws a single solid color
+        }
+        const node: LightNode = {
+          id: nodeId,
+          view: activeView,
+          typeId,
+          color1: nc1,
+          color2: nc2,
+          x: x ?? def?.x ?? 50,
+          y: y ?? def?.y ?? 50,
+          rotation: def?.rot ?? (activeView === "rear" ? 180 : 0),
+          orientation: type.defaultOrientation ?? "horizontal",
+          label: type.sku,
+        };
+        return [...prev, node];
+      });
+      setSelectedId(nodeId);
     },
     [activeView, params.colorScheme],
   );
@@ -201,13 +222,22 @@ export default function Visualizer() {
   const changeColorScheme = (scheme: ColorSchemeId) => {
     const run = schemeColors(scheme);
     setParams((p) => ({ ...p, colorScheme: scheme }));
-    setNodes((prev) =>
-      prev.map((n) =>
-        SKU_MAP[n.typeId]?.allowTriColor
-          ? { ...n, color1: run.c1, color2: run.c2 }
-          : n,
-      ),
-    );
+    setNodes((prev) => {
+      // running per-(view,type) counter so solid bars keep alternating R,B,R,B…
+      const seen: Record<string, number> = {};
+      return prev.map((n) => {
+        const t = SKU_MAP[n.typeId];
+        if (!t?.allowTriColor) return n;
+        if (t.solidBar) {
+          const key = `${n.view}|${n.typeId}`;
+          const i = seen[key] ?? 0;
+          seen[key] = i + 1;
+          const solid = i % 2 === 0 ? run.c1 : run.c2;
+          return { ...n, color1: solid, color2: solid };
+        }
+        return { ...n, color1: run.c1, color2: run.c2 };
+      });
+    });
   };
   const setNodeColor1 = (id: string, color1: LightColorId) =>
     setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, color1 } : n)));
