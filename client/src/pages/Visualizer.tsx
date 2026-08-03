@@ -160,7 +160,14 @@ export default function Visualizer() {
         // (prev) so alternation is correct even on rapid successive drops.
         let nc1 = c1;
         let nc2 = c2;
-        if (type.solidBar && type.allowTriColor) {
+        // Alternate ONLY the MicroPulse solid bars/modules (they show one color
+        // per node). DynaFlare ("dyna") and round heads keep their split c1/c2
+        // so they render the two-color warning sprite, not a single solid.
+        const alternates =
+          type.solidBar &&
+          type.allowTriColor &&
+          (type.shape === "bar" || type.shape === "module");
+        if (alternates) {
           const sameCount = prev.filter(
             (n) => n.view === activeView && n.typeId === typeId,
           ).length;
@@ -228,7 +235,8 @@ export default function Visualizer() {
       return prev.map((n) => {
         const t = SKU_MAP[n.typeId];
         if (!t?.allowTriColor) return n;
-        if (t.solidBar) {
+        // Only MicroPulse solid bars/modules alternate; dyna/round keep the split.
+        if (t.solidBar && (t.shape === "bar" || t.shape === "module")) {
           const key = `${n.view}|${n.typeId}`;
           const i = seen[key] ?? 0;
           seen[key] = i + 1;
