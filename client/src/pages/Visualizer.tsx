@@ -155,26 +155,12 @@ export default function Visualizer() {
       const c2 = type.allowTriColor ? run.c2 : type.defaultC2;
       const nodeId = uid(typeId);
       setNodes((prev) => {
-        // Solid MicroPulse bars show ONE color per node and ALTERNATE across the
-        // grille (run.c1, run.c2, …). Count same-type nodes in CURRENT state
-        // (prev) so alternation is correct even on rapid successive drops.
-        let nc1 = c1;
-        let nc2 = c2;
-        // Alternate ONLY the MicroPulse solid bars/modules (they show one color
-        // per node). DynaFlare ("dyna") and round heads keep their split c1/c2
-        // so they render the two-color warning sprite, not a single solid.
-        const alternates =
-          type.solidBar &&
-          type.allowTriColor &&
-          (type.shape === "bar" || type.shape === "module");
-        if (alternates) {
-          const sameCount = prev.filter(
-            (n) => n.view === activeView && n.typeId === typeId,
-          ).length;
-          const solid = sameCount % 2 === 0 ? run.c1 : run.c2;
-          nc1 = solid;
-          nc2 = solid; // c1 === c2 => renderer draws a single solid color
-        }
+        // All tri-color heads (MicroPulse bars, DynaFlare, round, wide) render a
+        // two-color split sprite using c1/c2. A single MicroPulse 6-3 grille head
+        // physically splits half red / half blue across its own LEDs, so we keep
+        // the split rather than forcing a single solid color per node.
+        const nc1 = c1;
+        const nc2 = c2;
         const node: LightNode = {
           id: nodeId,
           view: activeView,
@@ -229,23 +215,15 @@ export default function Visualizer() {
   const changeColorScheme = (scheme: ColorSchemeId) => {
     const run = schemeColors(scheme);
     setParams((p) => ({ ...p, colorScheme: scheme }));
-    setNodes((prev) => {
-      // running per-(view,type) counter so solid bars keep alternating R,B,R,B…
-      const seen: Record<string, number> = {};
-      return prev.map((n) => {
+    setNodes((prev) =>
+      prev.map((n) => {
         const t = SKU_MAP[n.typeId];
         if (!t?.allowTriColor) return n;
-        // Only MicroPulse solid bars/modules alternate; dyna/round keep the split.
-        if (t.solidBar && (t.shape === "bar" || t.shape === "module")) {
-          const key = `${n.view}|${n.typeId}`;
-          const i = seen[key] ?? 0;
-          seen[key] = i + 1;
-          const solid = i % 2 === 0 ? run.c1 : run.c2;
-          return { ...n, color1: solid, color2: solid };
-        }
+        // Every tri-color head takes the scheme's split colors (c1/c2). Heads
+        // that carry a single color (e.g. amber-only) fall back to their default.
         return { ...n, color1: run.c1, color2: run.c2 };
-      });
-    });
+      }),
+    );
   };
   const setNodeColor1 = (id: string, color1: LightColorId) =>
     setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, color1 } : n)));
