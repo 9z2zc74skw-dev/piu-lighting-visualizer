@@ -77,6 +77,10 @@ function spriteFor(sku: SkuType, c1: LightColorId, c2: LightColorId): string | n
     }
     case "round": {
       const c = c1 === "blue" ? "b" : c1 === "amber" ? "a" : "r";
+      // Smoked-lens variants (416309-RBW-SMK) use dedicated dark-lens sprites.
+      // Only red/blue smoked sprites exist (tri-color R/B/W warning); amber
+      // falls back to the clear amber head.
+      if (sku.smokedLens && c !== "a") return `${BASE}fx/fx_round_smk_${c}.png`;
       return `${BASE}fx/fx_round_${c}.png`;
     }
     default:
@@ -110,12 +114,6 @@ export function LightFixture({ sku, color1, color2, scale = 1 }: Props) {
       : (ASPECT[sku.shape] ?? 4);
   const h = w / aspect;
 
-  // Smoked-lens variants (e.g. 416309-RBW-SMK) read darker/tinted: the lit LED
-  // still shows through, but the lens knocks brightness down and adds a smoky cast.
-  const smokedFilter = sku.smokedLens
-    ? "brightness(0.82) saturate(1.05) contrast(1.08)"
-    : undefined;
-
   return (
     <img
       src={src}
@@ -129,7 +127,6 @@ export function LightFixture({ sku, color1, color2, scale = 1 }: Props) {
         height: `${h}px`,
         pointerEvents: "none",
         userSelect: "none",
-        filter: smokedFilter,
       }}
     />
   );
