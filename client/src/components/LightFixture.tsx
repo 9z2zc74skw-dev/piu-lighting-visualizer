@@ -40,7 +40,7 @@ const BASE_W: Record<string, number> = {
   module: 18,
   stick: 60,
   round: 9,
-  dyna: 60, // 1-foot DynaFlare (DR1); longer models scale via lengthPx
+  dyna: 39, // 1-foot DynaFlare (DR1) — slim perimeter stick; longer models via baseW
 };
 
 function pairKey(c1: LightColorId, c2: LightColorId): "rb" | "bw" {
@@ -146,7 +146,13 @@ export function LightFixture({ sku, color1, color2, scale = 1 }: Props) {
     sku.solidBar && (sku.shape === "bar" || sku.shape === "module")
       ? BAR_SOLID_ASPECT
       : (ASPECT[sku.shape] ?? 4);
-  const h = w / aspect;
+  // DynaFlare sticks keep a CONSTANT thickness regardless of length: a 5-ft bar
+  // is longer than a 1-ft bar, not taller. Derive height from the 1-ft base so
+  // every DR1..DR6 shares the same height; only width (length) grows via baseW.
+  const h =
+    sku.shape === "dyna"
+      ? (BASE_W.dyna / ASPECT.dyna) * scale
+      : w / aspect;
 
   return (
     <img
