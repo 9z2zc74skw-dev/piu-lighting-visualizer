@@ -1,4 +1,5 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
+import { apiRequest } from "@/lib/queryClient";
 import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
 import {
@@ -47,6 +48,9 @@ import {
   Search,
   ChevronDown,
   ChevronRight,
+  Save,
+  FolderOpen,
+  Magnet,
 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 
@@ -127,8 +131,97 @@ export default function Visualizer() {
     return seed;
   });
 
+  // ---- Saved builds (server-backed, survives reload + redeploy) ----
+  const [savedBuilds, setSavedBuilds] = useState<{ name: string; updatedAt: number }[]>([]);
+  const [saveName, setSaveName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  // ---- Snapping ----
+  const [snapOn, setSnapOn] = useState(true);
+  // active alignment guides during a drag: vertical (x%) and horizontal (y%) lines
+  const [guides, setGuides] = useState<{ vx: number[]; hy: number[] }>({ vx: [], hy: [] });
+  const [dragActive, setDragActive] = useState(false);
+
   const stageRef = useRef<HTMLDivElement>(null);
   const dragType = useRef<string | null>(null);
+
+  const refreshBuilds = useCallback(async () => {
+    try {
+      const res = await apiRequest("GET", "/api/builds");
+      setSavedBuilds(await res.json());
+    } catch {
+      /* ignore — list stays as-is */
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshBuilds();
+  }, [refreshBuilds]);
+
+  // Save the current build (vehicle + params + placed nodes) under a name.
+  const saveBuild = async () => {
+    const name = saveName.trim();
+    if (!name) {
+      toast({ title: "Name required", description: "Enter a customer / department name first.", variant: "destructive" });
+      return;
+    }
+    setBusy(true);
+    try {
+      const payload = { vehicleId, params, nodes };
+      await apiRequest("POST", "/api/builds", { name, data: JSON.stringify(payload) });
+      await refreshBuilds();
+      toast({ title: "Build saved", description: `“${name}” saved (${nodes.length} lights). It will survive reloads.` });
+    } catch (err) {
+      toast({ title: "Save failed", description: String(err), variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Load a saved build by name and restore vehicle + params + nodes.
+  const loadBuild = async (name: string) => {
+    if (!name) return;
+    setBusy(true);
+    try {
+      const res = await apiRequest("GET", `/api/builds/${encodeURIComponent(name)}`);
+      const build = await res.json();
+      const parsed = JSON.parse(build.data) as {
+        vehicleId: string;
+        params: BuildParams;
+        nodes: LightNode[];
+      };
+      setVehicleId(parsed.vehicleId ?? DEFAULT_VEHICLE_ID);
+      setParams(parsed.params ?? DEFAULT_PARAMS);
+      setNodes(parsed.nodes ?? []);
+      setSelectedId(null);
+      setSaveName(name);
+      toast({ title: "Build loaded", description: `“${name}” restored (${parsed.nodes?.length ?? 0} lights).` });
+    } catch (err) {
+      toast({ title: "Load failed", description: String(err), variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Delete the currently-named saved build.
+  const deleteBuild = async () => {
+    const name = saveName.trim();
+    if (!name) return;
+    if (!savedBuilds.some((b) => b.name === name)) {
+      toast({ title: "No such build", description: `“${name}” isn't a saved build.`, variant: "destructive" });
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiRequest("DELETE", `/api/builds/${encodeURIComponent(name)}`);
+      await refreshBuilds();
+      toast({ title: "Build deleted", description: `“${name}” removed.` });
+    } catch (err) {
+      toast({ title: "Delete failed", description: String(err), variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const viewNodes = nodes.filter((n) => n.view === activeView);
   const vehicle = VEHICLE_MAP[vehicleId] ?? VEHICLE_MAP[DEFAULT_VEHICLE_ID];
@@ -192,14 +285,71 @@ export default function Visualizer() {
     e.preventDefault();
     if (!dragType.current || !stageRef.current) return;
     const rect = stageRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    addNode(dragType.current, x, y);
+    const rx = ((e.clientX - rect.left) / rect.width) * 100;
+    const ry = ((e.clientY - rect.top) / rect.height) * 100;
+    // Snap the drop position too (id "__new__" excludes nothing existing).
+    const s = snapCoords("__new__", rx, ry, e.altKey);
+    addNode(dragType.current, s.x, s.y);
     dragType.current = null;
   };
 
-  const moveNode = (id: string, x: number, y: number) =>
-    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, x, y } : n)));
+  // ---- Snapping helpers ----
+  const GRID = 2; // grid step, percent
+  const GUIDE_TOL = 1.6; // snap-to-alignment tolerance, percent
+  const CENTER = 50; // vehicle centerline (x)
+
+  // Given a raw x/y for node `id`, return snapped coords + which guide lines are
+  // active. Priority: alignment to another light / centerline (tight) wins over
+  // the coarser grid. Alt held (`bypass`) disables all snapping.
+  const snapCoords = useCallback(
+    (id: string, x: number, y: number, bypass: boolean) => {
+      if (bypass || !snapOn) return { x, y, vx: [] as number[], hy: [] as number[] };
+      const others = nodes.filter((n) => n.id !== id && n.view === activeView);
+      const vx: number[] = [];
+      const hy: number[] = [];
+
+      // X: snap to centerline or another light's x
+      let sx = x;
+      const xTargets = [CENTER, ...others.map((n) => n.x)];
+      let bestX = Infinity;
+      for (const t of xTargets) {
+        const d = Math.abs(x - t);
+        if (d < GUIDE_TOL && d < bestX) {
+          bestX = d;
+          sx = t;
+        }
+      }
+      if (bestX !== Infinity) vx.push(sx);
+      else sx = Math.round(x / GRID) * GRID;
+
+      // Y: snap to another light's y
+      let sy = y;
+      let bestY = Infinity;
+      for (const n of others) {
+        const d = Math.abs(y - n.y);
+        if (d < GUIDE_TOL && d < bestY) {
+          bestY = d;
+          sy = n.y;
+        }
+      }
+      if (bestY !== Infinity) hy.push(sy);
+      else sy = Math.round(y / GRID) * GRID;
+
+      return { x: sx, y: sy, vx, hy };
+    },
+    [nodes, activeView, snapOn],
+  );
+
+  const moveNode = (id: string, x: number, y: number, alt = false) => {
+    const s = snapCoords(id, x, y, alt);
+    setGuides({ vx: s.vx, hy: s.hy });
+    setDragActive(true);
+    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, x: s.x, y: s.y } : n)));
+  };
+  const endDrag = () => {
+    setDragActive(false);
+    setGuides({ vx: [], hy: [] });
+  };
   const removeNode = (id: string) => {
     setNodes((prev) => prev.filter((n) => n.id !== id));
     if (selectedId === id) setSelectedId(null);
@@ -533,11 +683,69 @@ export default function Visualizer() {
           <Button size="sm" onClick={exportPdf} disabled={exporting} data-testid="button-export-pdf">
             <FileText className="mr-1.5 h-4 w-4" /> PDF Sign-off
           </Button>
+          <Button
+            variant={snapOn ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSnapOn((s) => !s)}
+            title="Snap to grid & align to other lights (hold Alt while dragging to bypass)"
+            data-testid="button-snap"
+          >
+            <Magnet className="mr-1.5 h-4 w-4" /> Snap {snapOn ? "On" : "Off"}
+          </Button>
           <Button variant="ghost" size="icon" onClick={toggle} data-testid="button-theme">
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
         </div>
       </header>
+
+      {/* Save / Load bar — server-backed builds survive reload & redeploy */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background/60 px-3 py-2" data-export-hide>
+        <div className="flex items-center gap-1.5">
+          <Save className="h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            value={saveName}
+            onChange={(e) => setSaveName(e.target.value)}
+            placeholder="Customer / department name"
+            className="h-8 w-56 rounded-md border border-border bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            data-testid="input-build-name"
+          />
+        </div>
+        <Button variant="default" size="sm" onClick={saveBuild} disabled={busy} data-testid="button-save-build">
+          <Save className="mr-1.5 h-4 w-4" /> Save
+        </Button>
+        <div className="flex items-center gap-1.5">
+          <FolderOpen className="h-4 w-4 text-muted-foreground" />
+          <select
+            value=""
+            onChange={(e) => loadBuild(e.target.value)}
+            disabled={busy || savedBuilds.length === 0}
+            className="h-8 w-52 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+            data-testid="select-load-build"
+          >
+            <option value="" disabled>
+              {savedBuilds.length ? "Load saved build…" : "No saved builds yet"}
+            </option>
+            {savedBuilds.map((b) => (
+              <option key={b.name} value={b.name}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={deleteBuild}
+          disabled={busy || !savedBuilds.some((b) => b.name === saveName.trim())}
+          data-testid="button-delete-build"
+        >
+          <Trash2 className="mr-1.5 h-4 w-4" /> Delete
+        </Button>
+        <span className="ml-auto text-[11px] text-muted-foreground">
+          {nodes.length} light{nodes.length === 1 ? "" : "s"} placed · saves persist across reloads
+        </span>
+      </div>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Left palette — compact, searchable, collapsible. Sticky header +
@@ -795,11 +1003,32 @@ export default function Visualizer() {
                 stageRef={stageRef}
                 onSelect={setSelectedId}
                 onMove={moveNode}
+                onEndDrag={endDrag}
                 onRemove={removeNode}
                 onRotate={rotateNode}
                 onFlipOrientation={flipOrientation}
               />
             ))}
+            {/* Alignment guide lines (only while dragging with snap on). Hidden
+                from PNG/PDF export via data-export-hide. */}
+            {dragActive && (guides.vx.length > 0 || guides.hy.length > 0) && (
+              <div className="pointer-events-none absolute inset-0 z-30" data-export-hide>
+                {guides.vx.map((x, i) => (
+                  <div
+                    key={`vx-${i}`}
+                    className="absolute top-0 bottom-0 w-px bg-cyan-300/80"
+                    style={{ left: `${x}%` }}
+                  />
+                ))}
+                {guides.hy.map((y, i) => (
+                  <div
+                    key={`hy-${i}`}
+                    className="absolute left-0 right-0 h-px bg-cyan-300/80"
+                    style={{ top: `${y}%` }}
+                  />
+                ))}
+              </div>
+            )}
             <div className="pointer-events-none absolute bottom-2 right-3 text-[10px] font-medium text-white/50">
               Integrity Upfitters · {projectName}
             </div>

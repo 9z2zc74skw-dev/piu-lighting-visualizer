@@ -8,7 +8,8 @@ interface Props {
   selected: boolean;
   stageRef: React.RefObject<HTMLDivElement>;
   onSelect: (id: string) => void;
-  onMove: (id: string, x: number, y: number) => void;
+  onMove: (id: string, x: number, y: number, alt: boolean) => void;
+  onEndDrag: () => void;
   onRemove: (id: string) => void;
   onRotate: (id: string) => void;
   onFlipOrientation: (id: string) => void;
@@ -20,6 +21,7 @@ export function LightNodeMarker({
   stageRef,
   onSelect,
   onMove,
+  onEndDrag,
   onRemove,
   onRotate,
   onFlipOrientation,
@@ -47,12 +49,14 @@ export function LightNodeMarker({
     const rect = stageRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
-    onMove(node.id, Math.max(0, Math.min(100, x)), Math.max(0, Math.min(100, y)));
+    // Alt (or Option on Mac) temporarily bypasses snapping for fine placement.
+    onMove(node.id, Math.max(0, Math.min(100, x)), Math.max(0, Math.min(100, y)), e.altKey);
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
     dragging.current = false;
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    onEndDrag();
   };
 
   return (
