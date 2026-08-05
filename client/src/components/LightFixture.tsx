@@ -26,6 +26,7 @@ const ASPECT: Record<string, number> = {
   stick: 11.3,
   round: 1.02,
   dyna: 11, // slim DynaFlare linear stick (fixed so R/B nodes match)
+  algt: 18.7, // Allegiant roof lightbar (keyed sprite ~2090x112)
 };
 
 // solid single-color bars have a slightly different intrinsic aspect
@@ -41,6 +42,7 @@ const BASE_W: Record<string, number> = {
   stick: 60,
   round: 9,
   dyna: 39, // 1-foot DynaFlare (DR1) — slim perimeter stick; longer models via baseW
+  algt: 46, // Allegiant full-width roof bar — spans ~46% of the stage width
 };
 
 function pairKey(c1: LightColorId, c2: LightColorId): "rb" | "bw" {
@@ -97,6 +99,16 @@ function spriteFor(sku: SkuType, c1: LightColorId, c2: LightColorId): string | n
       }
       // split R/B warning look (both clear and smoked have an _rb split sprite)
       return `${BASE}fx/${pfx}_rb.png`;
+    }
+    case "algt": {
+      // Federal Signal Allegiant roof lightbar — a full-width bar that flashes
+      // both colors across its length. Blue/White when white is present
+      // (AR depts), otherwise Red/Blue (OK depts). Only two keyed split sprites
+      // exist (rb / bw), so a forced single-color node still maps to its pair.
+      const hasW = c1 === "white" || c2 === "white";
+      const hasR = c1 === "red" || c2 === "red";
+      const pair = hasW && !hasR ? "bw" : "rb";
+      return `${BASE}fx/fx_algt_${pair}.png`;
     }
     case "round": {
       // Tri-color R/B/W perimeter round: in warning mode it flashes two colors,

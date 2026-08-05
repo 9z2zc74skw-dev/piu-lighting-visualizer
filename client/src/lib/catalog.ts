@@ -40,7 +40,7 @@ export const GROUP_LABELS: Record<SkuGroup, string> = {
 //        SOLID single-color per node (alternates R/B like MicroPulse bars); the
 //        `lengthPx` scales with the DynaFlare foot-length. Smoked variants use
 //        dedicated dark-lens sprites.
-export type FixtureShape = "bar" | "wide" | "stick" | "module" | "round" | "dyna" | "equip" | "scene";
+export type FixtureShape = "bar" | "wide" | "stick" | "module" | "round" | "dyna" | "algt" | "equip" | "scene";
 
 // Mounting orientation of a fixture's long axis. Horizontal = across (typical
 // grille/visor); vertical = up/down (e.g. MPS1200-series on the rear hatch
@@ -88,6 +88,30 @@ export interface SkuType {
 
 // ---- Federal Signal SKUs from Wagoner PIU (Est. 1233) ----
 export const SKU_TYPES: SkuType[] = [
+  // Roof lightbar (flagship)
+  {
+    id: "algt",
+    sku: "ALGT",
+    name: "Allegiant Roof Lightbar",
+    group: "front",
+    mount: "Roof — full-width lightbar (centered)",
+    shape: "algt",
+    segments: 12,
+    spreadDeg: 200,
+    lengthPx: 52,
+    baseW: 52,
+    defaultC1: "red",
+    defaultC2: "blue",
+    allowWhite: true,
+    allowTriColor: true,
+    defaults: {
+      front: { x: 50, y: 22, rot: 0 },
+      rear: { x: 50, y: 22, rot: 0 },
+      left: { x: 48, y: 22, rot: 0 },
+      right: { x: 48, y: 22, rot: 0 },
+      hero: { x: 46, y: 20, rot: 0 },
+    },
+  },
   // Front / perimeter warning
   {
     id: "mps63",
