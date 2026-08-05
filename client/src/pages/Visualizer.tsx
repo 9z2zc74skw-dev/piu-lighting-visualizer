@@ -71,7 +71,10 @@ function viewImagesFor(vehicleId: string): Record<ViewId, string> {
 const GROUP_ORDER: SkuGroup[] = ["front", "hatch", "siren"];
 
 // Convert a PNG data URL to a compressed JPEG data URL (over a dark backdrop).
-async function pngToJpeg(pngUrl: string, quality = 0.85): Promise<string> {
+async function pngToJpeg(
+  pngUrl: string,
+  quality = 0.85,
+): Promise<{ data: string; w: number; h: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -83,7 +86,11 @@ async function pngToJpeg(pngUrl: string, quality = 0.85): Promise<string> {
       ctx.fillStyle = "#0f1115";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL("image/jpeg", quality));
+      resolve({
+        data: canvas.toDataURL("image/jpeg", quality),
+        w: img.width,
+        h: img.height,
+      });
     };
     img.onerror = reject;
     img.src = pngUrl;
@@ -325,12 +332,28 @@ export default function Visualizer() {
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
 
-      for (let i = 0; i < VIEWS.length; i++) {
-        const v = VIEWS[i];
+      // Only include views that actually have lights placed on them. An empty
+      // view (e.g. Rear Hatch Open with nothing on it) is skipped entirely.
+      const exportViews = VIEWS.filter((v) =>
+        nodes.some((n) => n.view === v.id),
+      );
+      if (exportViews.length === 0) {
+        toast({
+          title: "Nothing to export",
+          description: "Place at least one light on a view before exporting a PDF.",
+          variant: "destructive",
+        });
+        setExporting(false);
+        return;
+      }
+      const totalPages = exportViews.length + (matches ? 1 : 0);
+
+      for (let i = 0; i < exportViews.length; i++) {
+        const v = exportViews[i];
         setActiveView(v.id);
         await new Promise((r) => setTimeout(r, 240));
         const pngUrl = await captureView(v.id, 1.6);
-        const img = await pngToJpeg(pngUrl, 0.85);
+        const { data: img, w: srcW, h: srcH } = await pngToJpeg(pngUrl, 0.85);
 
         if (i > 0) pdf.addPage();
         pdf.setFillColor(15, 17, 21);
@@ -344,9 +367,22 @@ export default function Visualizer() {
         pdf.setTextColor(180, 190, 205);
         pdf.text(`${projectName}  ·  ${v.label} View`, 40, 58);
 
-        const imgW = pageW - 80;
-        const imgH = imgW * 0.62;
-        pdf.addImage(img, "JPEG", 40, 74, imgW, Math.min(imgH, pageH - 210));
+        // Fit the captured stage into the available box WITHOUT distortion:
+        // scale to the source's true aspect ratio and center it (letterbox).
+        const boxX = 40;
+        const boxY = 74;
+        const boxW = pageW - 80;
+        const boxH = pageH - 210;
+        const srcAspect = srcW / srcH; // e.g. 4:3 stage => 1.333
+        let drawW = boxW;
+        let drawH = boxW / srcAspect;
+        if (drawH > boxH) {
+          drawH = boxH;
+          drawW = boxH * srcAspect;
+        }
+        const drawX = boxX + (boxW - drawW) / 2;
+        const drawY = boxY + (boxH - drawH) / 2;
+        pdf.addImage(img, "JPEG", drawX, drawY, drawW, drawH);
 
         // SKU list for this view
         const vNodes = nodes.filter((n) => n.view === v.id);
@@ -371,7 +407,7 @@ export default function Visualizer() {
         pdf.text("Department Representative / Signature", 40, pageH - 40);
         pdf.text("Date", pageW - 260, pageH - 40);
         pdf.text(
-          `Page ${i + 1} of ${VIEWS.length}  ·  Generated ${new Date().toLocaleDateString()}`,
+          `Page ${i + 1} of ${totalPages}  ·  Generated ${new Date().toLocaleDateString()}`,
           pageW - 40,
           pageH - 22,
           { align: "right" },
