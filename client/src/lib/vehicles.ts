@@ -79,6 +79,33 @@ export const VEHICLES: VehicleDef[] = [
     },
   },
   {
+    id: "durango",
+    name: "2024 Dodge Durango Pursuit",
+    short: "Dodge Durango",
+    images: {
+      front: "durango_front.png",
+      rear: "durango_rear.png",
+      rearOpen: "durango_rear_open.png",
+      left: "durango_left.png",
+      right: "durango_right.png",
+      hero: "durango_hero.png",
+    },
+    // The Durango is a mid-size SUV — lower roofline than the Tahoe, closer to
+    // the PIU in overall height. Modest nudges keep the shared layout reading
+    // correctly against the Durango sheet metal.
+    fixtureNudge: {
+      front: { dx: 0, dy: 1 },
+      rear: { dx: 0, dy: 1 },
+      hero: { dx: 0, dy: 1 },
+    },
+    // Durango front fascia: the crosshair grille sits mid-height and is wider
+    // than the PIU. Center the guard on the grille opening and widen slightly.
+    pushBarPlacement: {
+      front: { cx: 50, cy: 42, w: 31 },
+      hero: { cx: 33, cy: 42, w: 24, rot: -5 },
+    },
+  },
+  {
     id: "tahoe_blk",
     name: "2026 Chevrolet Tahoe PPV (Black)",
     short: "Chevy Tahoe (Black)",

@@ -294,8 +294,11 @@ export default function Visualizer() {
   };
 
   // ---- Snapping helpers ----
-  const GRID = 2; // grid step, percent
-  const GUIDE_TOL = 1.6; // snap-to-alignment tolerance, percent
+  // Grid is intentionally very fine so free placement feels 1:1 with the cursor
+  // (no visible "jump"). Real assistance comes from alignment snapping to other
+  // lights / the centerline, which only engages within GUIDE_TOL.
+  const GRID = 0.25; // grid step, percent (~ sub-half-inch to scale)
+  const GUIDE_TOL = 1.0; // snap-to-alignment tolerance, percent
   const CENTER = 50; // vehicle centerline (x)
 
   // Given a raw x/y for node `id`, return snapped coords + which guide lines are
@@ -687,7 +690,7 @@ export default function Visualizer() {
             variant={snapOn ? "default" : "outline"}
             size="sm"
             onClick={() => setSnapOn((s) => !s)}
-            title="Snap to grid & align to other lights (hold Alt while dragging to bypass)"
+            title="Align to other lights & centerline. Hold ⌥ Option or ⌘ Command while dragging for free placement."
             data-testid="button-snap"
           >
             <Magnet className="mr-1.5 h-4 w-4" /> Snap {snapOn ? "On" : "Off"}

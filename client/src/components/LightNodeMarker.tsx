@@ -49,8 +49,10 @@ export function LightNodeMarker({
     const rect = stageRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
-    // Alt (or Option on Mac) temporarily bypasses snapping for fine placement.
-    onMove(node.id, Math.max(0, Math.min(100, x)), Math.max(0, Math.min(100, y)), e.altKey);
+    // Hold Option (⌥) OR Command (⌘) on Mac — or Alt/Ctrl on Windows — to
+    // temporarily bypass snapping for fine, free placement.
+    const bypass = e.altKey || e.metaKey || e.ctrlKey;
+    onMove(node.id, Math.max(0, Math.min(100, x)), Math.max(0, Math.min(100, y)), bypass);
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
