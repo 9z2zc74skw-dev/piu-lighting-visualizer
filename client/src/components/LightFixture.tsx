@@ -42,7 +42,7 @@ const BASE_W: Record<string, number> = {
   stick: 60,
   round: 9,
   dyna: 39, // 1-foot DynaFlare (DR1) — slim perimeter stick; longer models via baseW
-  algt: 46, // Allegiant full-width roof bar — spans ~46% of the stage width
+  algt: 250, // Allegiant full-width roof bar — spans the roofline (~38% of stage)
 };
 
 function pairKey(c1: LightColorId, c2: LightColorId): "rb" | "bw" {

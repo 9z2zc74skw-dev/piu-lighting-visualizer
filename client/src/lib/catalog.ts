@@ -98,8 +98,10 @@ export const SKU_TYPES: SkuType[] = [
     shape: "algt",
     segments: 12,
     spreadDeg: 200,
-    lengthPx: 52,
-    baseW: 52,
+    // Full-width roof lightbar: it must span the roofline, not sit like a small
+    // module. On the ~672px stage the roof spans ~38%, so ~250px reads to scale.
+    lengthPx: 250,
+    baseW: 250,
     defaultC1: "red",
     defaultC2: "blue",
     allowWhite: true,
