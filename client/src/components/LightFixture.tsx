@@ -79,8 +79,13 @@ function spriteFor(sku: SkuType, c1: LightColorId, c2: LightColorId): string | n
       return `${BASE}fx/fx_bar${smk}_${pairKey(c1, c2)}.png`;
     }
     case "stick": {
-      // amber traffic advisor (rear directional); otherwise SignalMaster in the
-      // dept scheme: blue/white when white is present, else red/blue.
+      // SpectraLux ILS SignalMaster sticks always display a fixed tri-color
+      // Blue/Red/Amber head arrangement (never a plain R/B split or amber-only
+      // sweep) — the physical bar is a B/R/A tri-color light head. Render the
+      // dedicated B/R/A sprite whenever the SKU is flagged tri-B/R/A.
+      if (sku.triBRA) return `${BASE}fx/fx_stick_bra.png`;
+      // Legacy behaviour for any other stick: amber traffic advisor, else the
+      // dept scheme (blue/white when white present, otherwise red/blue).
       const amber = c1 === "amber" || c2 === "amber";
       if (amber) return `${BASE}fx/fx_stick_amber.png`;
       return `${BASE}fx/fx_stick_${pairKey(c1, c2)}.png`;

@@ -27,6 +27,14 @@ export interface VehicleDef {
   images: Record<ViewId, string>;
   // optional per-view {dx,dy} percent nudge applied to shared fixture defaults
   fixtureNudge?: Partial<Record<ViewId, { dx: number; dy: number }>>;
+  // Roof lightbar width multiplier for THIS body. The base ALGT width (370px)
+  // is tuned for the Ford PIU roofline (scale 1.0). Narrower/differently-framed
+  // roofs (e.g. Durango) need a smaller factor so the bar spans the roof edge-
+  // to-edge without overhanging the A-pillars. Defaults to 1.0 when omitted.
+  barScale?: number;
+  // Per-vehicle vertical/horizontal nudge (percent) for the ROOF BAR only, so it
+  // seats on each body's roof crown. Positive dy moves it DOWN onto the roof.
+  barNudge?: { dx: number; dy: number };
   // optional per-view placement for the Westin HDX push bar overlay. The base
   // HDX geometry is authored for the Ford PIU grille; each other body scales &
   // shifts it to sit on its own grille. tx/ty are percent offsets in the
@@ -51,6 +59,10 @@ export const VEHICLES: VehicleDef[] = [
       front: { cx: 50, cy: 41, w: 30 },
       hero: { cx: 32, cy: 40, w: 23, rot: -5 },
     },
+    // Formula-fit: bar = 0.88 x measured roof width. PIU roof is 57% of the
+    // image at the crown band; crown at y~15%, so seat the bar just below it.
+    barScale: 1.04,
+    barNudge: { dx: 0, dy: -3 },
   },
   {
     id: "tahoe",
@@ -71,6 +83,9 @@ export const VEHICLES: VehicleDef[] = [
       rear: { dx: 0, dy: 2 },
       hero: { dx: 0, dy: 1 },
     },
+    // Formula-fit: Tahoe roof matches the PIU (~57%), crown at y~14%.
+    barScale: 1.04,
+    barNudge: { dx: 0, dy: -4 },
     // Tahoe grille sits lower and is wider/shorter than the PIU. Drop the guard
     // down onto the lower grille opening and size it to the Tahoe fascia.
     pushBarPlacement: {
@@ -98,6 +113,10 @@ export const VEHICLES: VehicleDef[] = [
       rear: { dx: 0, dy: 1 },
       hero: { dx: 0, dy: 1 },
     },
+    // Formula-fit: Durango roof is only ~48% of the image (vehicle is inset in
+    // the canvas), so the bar must be smaller. Crown at y~22%, seat just below.
+    barScale: 0.88,
+    barNudge: { dx: 0, dy: 4 },
     // Durango front fascia: the crosshair grille sits mid-height and is wider
     // than the PIU. Center the guard on the grille opening and widen slightly.
     pushBarPlacement: {
@@ -123,6 +142,10 @@ export const VEHICLES: VehicleDef[] = [
       rear: { dx: 0, dy: 2 },
       hero: { dx: 0, dy: 1 },
     },
+    // Formula-fit: the black Tahoe is framed smallest (roof only ~38% of the
+    // image), so the bar trims hardest. Crown at y~14%.
+    barScale: 0.7,
+    barNudge: { dx: 0, dy: -4 },
     pushBarPlacement: {
       front: { cx: 50, cy: 44, w: 30 },
       hero: { cx: 33, cy: 43, w: 23, rot: -5 },

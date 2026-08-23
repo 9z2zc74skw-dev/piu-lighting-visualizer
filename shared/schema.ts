@@ -34,3 +34,24 @@ export const insertBuildSchema = createInsertSchema(builds)
 
 export type InsertBuild = z.infer<typeof insertBuildSchema>;
 export type Build = typeof builds.$inferSelect;
+
+// Imported QuickBooks estimates, keyed by their DocNumber (e.g. "1233"). `data`
+// holds the serialized Estimate object (customer, agency, memo, total, lines) as
+// JSON text. Estimates are pulled live from QuickBooks by the operator and
+// cached here so the visualizer can auto-build from any imported estimate #.
+export const estimates = sqliteTable("estimates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  docNumber: text("doc_number").notNull().unique(),
+  data: text("data").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const insertEstimateSchema = createInsertSchema(estimates)
+  .pick({ docNumber: true, data: true })
+  .extend({
+    docNumber: z.string().trim().min(1, "Estimate number is required").max(40),
+    data: z.string().min(2),
+  });
+
+export type InsertEstimate = z.infer<typeof insertEstimateSchema>;
+export type Estimate = typeof estimates.$inferSelect;

@@ -15,3 +15,11 @@ data.db-journal
 *.log
 .DS_Store
 fx/_round_orig/
+
+# QA scratch — Playwright probe scripts and screenshots
+qa*.mjs
+qa_*.mjs
+qa*.png
+qa_*.png
+qa_*.json
+dom.mjs

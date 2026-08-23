@@ -75,6 +75,7 @@ export interface SkuType {
   allowWhite: boolean; // whether white is a valid color for this head
   allowTriColor?: boolean; // RBW/BRW heads: allow white as a selectable warning color
   triABR?: boolean; // SignalMaster tri-color A/B/R: warning (R/B) or amber traffic mode
+  triBRA?: boolean; // SpectraLux ILS: ALWAYS renders fixed Blue/Red/Amber tri-color heads
   smokedLens?: boolean; // smoked-lens variant — fixture reads dark/tinted when off
   solidBar?: boolean; // MicroPulse bar heads (MPS63/MPS123) alternate R then B in
   //                     real life rather than showing a split — render each node
@@ -98,10 +99,11 @@ export const SKU_TYPES: SkuType[] = [
     shape: "algt",
     segments: 12,
     spreadDeg: 200,
-    // Full-width roof lightbar: it must span the roofline, not sit like a small
-    // module. On the ~672px stage the roof spans ~38%, so ~250px reads to scale.
-    lengthPx: 250,
-    baseW: 250,
+    // Full-width roof lightbar: it must span the roofline nearly edge-to-edge,
+    // not sit like a small module. The vehicle roof spans ~48% of the ~768px
+    // stage, so ~370px reads at true proportion for a 53in MAX-style bar.
+    lengthPx: 370,
+    baseW: 370,
     defaultC1: "red",
     defaultC2: "blue",
     allowWhite: true,
@@ -187,15 +189,19 @@ export const SKU_TYPES: SkuType[] = [
   {
     id: "sifmjs",
     sku: "SIFMJS",
-    name: "SignalMaster / Visor (Front)",
+    name: "SpectraLux ILS Visor (Front)",
     group: "front",
     mount: "Windshield visor, interior",
     shape: "stick",
     segments: 8,
     spreadDeg: 120,
-    lengthPx: 90,
-    defaultC1: "red",
-    defaultC2: "blue",
+    // Interior windshield visor stick — spans most of the windshield glass
+    // width. ~170px on the ~672px stage reads to scale inside the glass.
+    lengthPx: 170,
+    baseW: 170,
+    triBRA: true,
+    defaultC1: "blue",
+    defaultC2: "red",
     allowWhite: false,
     defaults: {
       front: { x: 50, y: 30, rot: 0 },
@@ -521,22 +527,25 @@ export const SKU_TYPES: SkuType[] = [
   {
     id: "sifmjh",
     sku: "SIFMJH",
-    name: "SignalMaster (Rear Hatch) — tri-color A/B/R",
+    name: "SpectraLux ILS (Rear Hatch) — tri-color B/R/A",
     group: "hatch",
-    mount: "Rear hatch glass, upper",
+    mount: "Rear hatch glass, upper — interior stick",
     shape: "stick",
     segments: 8,
     spreadDeg: 140,
-    lengthPx: 96,
-    // Tri-color A/B/R head. Two modes via the color picker:
-    //   • Warning mode  = red/blue split (default)
-    //   • Traffic mode  = set either head to amber -> all-amber directional
-    defaultC1: "red",
-    defaultC2: "blue",
+    // Interior rear-hatch light stick that mounts INSIDE the rear glass. It
+    // must fit within the glass opening, not span the full body width. The
+    // rear window band is ~55% of stage width, so ~200px (~30%) sits cleanly
+    // inside the glass, centered.
+    lengthPx: 200,
+    baseW: 200,
+    // SpectraLux ILS always shows a fixed Blue/Red/Amber tri-color head layout.
+    triBRA: true,
+    defaultC1: "blue",
+    defaultC2: "red",
     allowWhite: false,
-    triABR: true,
     defaults: {
-      rear: { x: 50, y: 30, rot: 180 },
+      rear: { x: 50, y: 27, rot: 0 },
       hero: { x: 76, y: 28, rot: 160 },
     },
   },
@@ -876,6 +885,17 @@ export const WAGONER_ESTIMATE: Estimate = {
   ],
 };
 
+// A location derived from the estimate line's DESCRIPTION text (e.g. "rear
+// quarter glass"). Drives which view + rough spot a light is placed on,
+// overriding the SKU's default placement when present.
+export interface PlacementHint {
+  view: ViewId;
+  absX: number; // 0-100 percent across the stage
+  absY: number; // 0-75 percent down the stage
+  label: string; // human label for the match panel, e.g. "rear quarter glass"
+  pair?: boolean; // mirror across center for a 2-unit L/R pair
+}
+
 // The result of matching one estimate line to the catalog
 export interface MatchResult {
   itemName: string;
@@ -886,6 +906,54 @@ export interface MatchResult {
   triColor?: boolean; // head is RBW/BRW: colors follow the department run scheme,
   //                     not a fixed override (individual heads can still be edited)
   note?: string; // e.g. conflict flag
+  placement?: PlacementHint; // description-derived location (wins over SKU default)
+}
+
+// Parse a QuickBooks line DESCRIPTION for a mounting-location phrase and return
+// a placement hint. The operator writes these notes deliberately (e.g. "behind
+// front grille", "rear quarter glass", "rear hatch face, plate area"), so they
+// take priority over the SKU's generic default spot. Returns undefined when no
+// known location phrase is found (caller then falls back to the SKU default and
+// flags it).
+export function parsePlacementHint(desc: string): PlacementHint | undefined {
+  const d = (desc ?? "").toLowerCase();
+  const has = (...ks: string[]) => ks.some((k) => d.includes(k));
+
+  // Order matters: most-specific phrases first.
+  // --- Rear quarter / side glass ---
+  if (has("quarter glass", "rear quarter", "quarter window"))
+    return { view: "rear", absX: 30, absY: 30, label: "rear quarter glass", pair: true };
+  // --- Rear hatch / liftgate / plate / tailgate ---
+  if (has("rear hatch", "liftgate", "tailgate", "plate area", "license plate", "hatch face"))
+    return { view: "rear", absX: 50, absY: 46, label: "rear hatch / plate area", pair: true };
+  // --- Inside hatch / cargo / hatch-open activated ---
+  if (has("inside hatch", "hatch open", "cargo", "inside the hatch", "liftgate underside"))
+    return { view: "rearOpen", absX: 44, absY: 15, label: "inside hatch (open)", pair: true };
+  // --- Rear spoiler ---
+  if (has("spoiler"))
+    return { view: "rear", absX: 50, absY: 20, label: "rear spoiler", pair: true };
+  // --- Rear traffic-advisor stick / SignalMaster / rear window ---
+  if (has("signalmaster", "traffic advisor", "advisor stick", "rear window", "rear stick", "rear glass", "rear deck", "rear signal"))
+    return { view: "rear", absX: 50, absY: 27, label: "rear traffic-advisor stick", pair: false };
+  // --- Grille / bumper (front low) ---
+  if (has("grille", "grill", "front bumper", "lower front", "tow hook"))
+    return { view: "front", absX: 50, absY: 52, label: "front grille", pair: true };
+  // --- Mirror / side lighting ---
+  if (has("mirror", "side lighting", "side warning"))
+    return { view: "front", absX: 30, absY: 36, label: "mirror / side", pair: true };
+  // --- Visor / windshield / headliner (front upper glass) ---
+  if (has("visor", "windshield", "headliner", "interior front", "dash"))
+    return { view: "front", absX: 50, absY: 25, label: "front visor / windshield", pair: false };
+  // --- Roof / rooftop bar (also common estimate phrasings like "53in bar",
+  //     "tri-color bar", "MAX bar", "LED bar") ---
+  if (has("roof", "rooftop", "lightbar", "light bar", "roof bar", "color bar",
+          "led bar", "in bar", "inch bar", "max bar", "full bar", "full-width", "allegiant"))
+    return { view: "front", absX: 50, absY: 22, label: "roofline", pair: false };
+  // --- Fog / lower ---
+  if (has("fog", "lower valance"))
+    return { view: "front", absX: 35, absY: 60, label: "fog / lower", pair: true };
+
+  return undefined;
 }
 
 // ============================================================================
@@ -945,8 +1013,25 @@ export function matchLine(line: EstimateLine): MatchResult {
     res.triColor = true; // front visor — follows the run scheme
   } else if (bn.startsWith("SIFMJH")) {
     res.typeId = "sifmjh";
-    res.colorOverride = { c1: "amber", c2: "red" }; // rear stick: fixed amber/red
+    // SpectraLux ILS always renders fixed Blue/Red/Amber tri-color heads (the
+    // sprite is locked to B/R/A via triBRA). Seed the glow colors blue/red.
+    res.colorOverride = { c1: "blue", c2: "red" };
     res.note = "On quote, but memo says 'no rear stick' - verify";
+  } else if (bn.startsWith("ALGT")) {
+    // Allegiant full-width roof lightbar. Covers the standard Allegiant and the
+    // newer Allegiant MAX (e.g. ALGT53JX-P3LB) — same overall look, different
+    // optics/features, so it reuses the Allegiant roof-bar sprite. Tri-color
+    // heads follow the department run scheme.
+    res.typeId = "algt";
+    res.triColor = true;
+    if (bn.includes("JX") || bn.includes("MAX")) res.note = "Allegiant MAX";
+  } else if (bn.startsWith("CNSMJ") || bn.startsWith("CNSM")) {
+    // SignalMaster rear-window traffic-advisor stick (e.g. CNSMJ8R-P3C). No
+    // dedicated SignalMaster sprite yet, so it renders using the rear ILS stick
+    // as a visual stand-in; warning heads follow the run scheme.
+    res.typeId = "sifmjh";
+    res.triColor = true;
+    res.note = "SignalMaster stick — shown with ILS rear-stick sprite";
   } else if (bn.startsWith("MPS123")) {
     res.typeId = "mps123";
     res.triColor = true; // RBW
@@ -973,6 +1058,19 @@ export function matchLine(line: EstimateLine): MatchResult {
   // Everything else (Jotto consoles, plates, gun mount, iPad mount, COM9-B
   // interior, Decatur radar, labor, mirror bracket) is non-visualized — listed
   // on the sheet but not placed as a light node.
+
+  // For any matched lighting SKU, read the DESCRIPTION for a mounting-location
+  // phrase. When found, it drives placement (wins over the SKU default). When
+  // not found, planPlacements falls back to the SKU default and we flag it so
+  // the operator knows to verify by hand.
+  if (res.typeId) {
+    const hint = parsePlacementHint(line.description);
+    if (hint) {
+      res.placement = hint;
+    } else if (!res.note) {
+      res.note = "No location in description — placed at SKU default, verify";
+    }
+  }
   return res;
 }
 
@@ -994,6 +1092,39 @@ export function planPlacements(match: MatchResult): AutoPlacement[] {
   if (!typeId) return [];
   const sku = SKU_MAP[typeId];
   const out: AutoPlacement[] = [];
+
+  // Description-driven placement WINS over the SKU default. When the estimate
+  // line carries a location hint (parsed from its description), place there
+  // instead of the SKU's generic spot. A 2-unit "pair" hint mirrors L/R across
+  // center; higher quantities fan out around the hint point.
+  if (match.placement) {
+    const h = match.placement;
+    const n = Math.max(1, Math.min(qty, 4));
+    const alt = sku.solidBar && match.triColor ? solidAltColors(match) : null;
+    if (n === 1) {
+      out.push({ typeId, view: h.view, dx: 0, dy: 0, absX: h.absX, absY: h.absY });
+    } else if (h.pair && n === 2) {
+      // Mirror across center: e.g. hint x=30 -> 30 and 70.
+      const xs = [h.absX, 100 - h.absX];
+      for (let i = 0; i < 2; i++)
+        out.push({
+          typeId, view: h.view, dx: 0, dy: 0, absX: xs[i], absY: h.absY,
+          colorOverride: alt ? alt[i % 2] : undefined,
+        });
+    } else {
+      // Fan out horizontally around the hint point.
+      const span = 24;
+      for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0 : i / (n - 1) - 0.5; // -0.5..0.5
+        const x = Math.max(4, Math.min(96, h.absX + t * span));
+        out.push({
+          typeId, view: h.view, dx: 0, dy: 0, absX: x, absY: h.absY,
+          colorOverride: alt ? alt[i % 2] : undefined,
+        });
+      }
+    }
+    return out;
+  }
 
   // Grille bars (MPS63): a pair on the front, L/R of grille. Solid single-color
   // heads that ALTERNATE red / blue (driver red, passenger blue) per the run scheme.
@@ -1100,11 +1231,31 @@ export function autoBuildFromEstimate(est: Estimate, schemeOverride?: ColorSchem
       placements.push({ ...p, colorOverride: p.colorOverride ?? matchColor });
     }
   }
-  // Params derived from the build: Wagoner is slicktop + no push bar; it does
-  // run interior dash + rear hatch warning.
+  // Params derived from the build. Push bar is shown ONLY when the estimate
+  // actually contains a push-bar / push-bumper part (Setina, Pro-Gard, PB-series,
+  // grille guard, ram bar, etc.). The memo is a weak hint that can force it OFF
+  // ("slicktop" / "no push") but never ON by itself — absence of those words is
+  // not evidence of a push bar.
   const memo = est.memo.toLowerCase();
+  const memoSaysNo = memo.includes("slicktop") || memo.includes("no push");
+  const memoSaysYes = memo.includes("push bar") || memo.includes("push bumper");
+  const hasPushBarPart = est.lines.some((l) => {
+    const t = ((l.itemName ?? "") + " " + (l.description ?? "")).toLowerCase();
+    return (
+      t.includes("push bar") ||
+      t.includes("push bumper") ||
+      t.includes("pushbar") ||
+      t.includes("grille guard") ||
+      t.includes("grill guard") ||
+      t.includes("ram bar") ||
+      t.includes("setina") ||
+      t.includes("pro-gard") ||
+      t.includes("progard") ||
+      /\bpb[- ]?\d/.test(t) // Setina PB-series, e.g. PB400, PB-450
+    );
+  });
   const params: BuildParams = {
-    pushBar: !memo.includes("slicktop") && !memo.includes("no push"),
+    pushBar: hasPushBarPart || (memoSaysYes && !memoSaysNo),
     dashLighting: true,
     rearHatchLights: true,
     colorScheme,

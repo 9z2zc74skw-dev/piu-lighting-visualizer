@@ -1,5 +1,5 @@
-import { users, builds } from '@shared/schema';
-import type { User, InsertUser, Build, InsertBuild } from '@shared/schema';
+import { users, builds, estimates } from '@shared/schema';
+import type { User, InsertUser, Build, InsertBuild, Estimate, InsertEstimate } from '@shared/schema';
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, desc } from "drizzle-orm";
@@ -20,6 +20,12 @@ sqlite.exec(`
     data TEXT NOT NULL,
     updated_at INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS estimates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    doc_number TEXT NOT NULL UNIQUE,
+    data TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
 `);
 
 export const db = drizzle(sqlite);
@@ -32,6 +38,9 @@ export interface IStorage {
   getBuild(name: string): Promise<Build | undefined>;
   saveBuild(build: InsertBuild): Promise<Build>;
   deleteBuild(name: string): Promise<boolean>;
+  listEstimates(): Promise<Estimate[]>;
+  getEstimate(docNumber: string): Promise<Estimate | undefined>;
+  saveEstimate(est: InsertEstimate): Promise<Estimate>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -77,6 +86,33 @@ export class DatabaseStorage implements IStorage {
   async deleteBuild(name: string): Promise<boolean> {
     const res = db.delete(builds).where(eq(builds.name, name)).run();
     return res.changes > 0;
+  }
+
+  async listEstimates(): Promise<Estimate[]> {
+    return db.select().from(estimates).orderBy(desc(estimates.updatedAt)).all();
+  }
+
+  async getEstimate(docNumber: string): Promise<Estimate | undefined> {
+    return db.select().from(estimates).where(eq(estimates.docNumber, docNumber)).get();
+  }
+
+  // Upsert by docNumber: overwrite an existing estimate, else insert.
+  async saveEstimate(insertEstimate: InsertEstimate): Promise<Estimate> {
+    const now = Date.now();
+    const existing = await this.getEstimate(insertEstimate.docNumber);
+    if (existing) {
+      return db
+        .update(estimates)
+        .set({ data: insertEstimate.data, updatedAt: now })
+        .where(eq(estimates.docNumber, insertEstimate.docNumber))
+        .returning()
+        .get();
+    }
+    return db
+      .insert(estimates)
+      .values({ ...insertEstimate, updatedAt: now })
+      .returning()
+      .get();
   }
 }
 

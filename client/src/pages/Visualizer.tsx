@@ -16,6 +16,7 @@ import {
   DEFAULT_PARAMS,
   Orientation,
   WAGONER_ESTIMATE,
+  Estimate,
   autoBuildFromEstimate,
   MatchResult,
   allowedColors,
@@ -31,6 +32,7 @@ import {
 import { VehicleOverlays } from "@/components/VehicleOverlays";
 import { LightNodeMarker } from "@/components/LightNodeMarker";
 import { LightFixture } from "@/components/LightFixture";
+import { GhostBar, GhostKind } from "@/components/GhostBar";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -117,6 +119,9 @@ export default function Visualizer() {
   // Estimate match results (populated by auto-build) + whether the build is active
   const [matches, setMatches] = useState<MatchResult[] | null>(null);
   const [showMatchPanel, setShowMatchPanel] = useState(false);
+  // The estimate the current build came from (drives the match-panel header +
+  // memo banner). Defaults to Wagoner #1233 until a build runs.
+  const [activeEstimate, setActiveEstimate] = useState<Estimate>(WAGONER_ESTIMATE);
   // Palette search + per-group collapse. Groups start expanded; searching
   // temporarily overrides collapse so all matches are visible.
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -135,6 +140,12 @@ export default function Visualizer() {
   const [savedBuilds, setSavedBuilds] = useState<{ name: string; updatedAt: number }[]>([]);
   const [saveName, setSaveName] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // ---- Estimate # input (Auto-Build source) ----
+  // Which QuickBooks estimate the Auto-Build pulls from. Defaults to 1233
+  // (Wagoner PD, seeded on the server). Any imported estimate # can be entered.
+  const [estimateNum, setEstimateNum] = useState("1233");
+  const [fetchingEst, setFetchingEst] = useState(false);
 
   // ---- Snapping ----
   const [snapOn, setSnapOn] = useState(true);
@@ -224,6 +235,27 @@ export default function Visualizer() {
   };
 
   const viewNodes = nodes.filter((n) => n.view === activeView);
+
+  // A roof lightbar is physically visible from more than the front view. For any
+  // full-width roof bar placed on the FRONT, derive read-only "ghost" mirrors on
+  // the other views: the FULL bar across the rear roofline, and an END-CAP slice
+  // at the roof edge on the left/right side views. These follow the front node
+  // (not stored, not editable) — edit the front bar to change them.
+  const ROOF_GHOST_VIEWS: Partial<Record<ViewId, { kind: GhostKind; x: number; y: number }>> = {
+    // rear: full bar centered on the rear roofline
+    rear: { kind: "full", x: 50, y: 20 },
+    // sides: end-cap at the roofline B-pillar (between the front & rear doors),
+    // where the end of a roof bar reads on a side profile.
+    left: { kind: "endcap", x: 49, y: 35 },
+    right: { kind: "endcap", x: 51, y: 35 },
+  };
+  const isRoofBar = (n: LightNode) => SKU_MAP[n.typeId]?.shape === "algt";
+  const ghostSpec = ROOF_GHOST_VIEWS[activeView];
+  const ghostBars =
+    ghostSpec != null
+      ? nodes.filter((n) => n.view === "front" && isRoofBar(n)).map((n) => ({ node: n, spec: ghostSpec }))
+      : [];
+
   const vehicle = VEHICLE_MAP[vehicleId] ?? VEHICLE_MAP[DEFAULT_VEHICLE_ID];
   const VIEW_IMAGES = viewImagesFor(vehicleId);
   const projectName = vehicle.name;
@@ -405,8 +437,8 @@ export default function Visualizer() {
   // Auto-build directly from the QuickBooks estimate: match each line to a
   // catalog SKU, place a node per unit (with color + orientation from the SKU),
   // and derive build params from the memo.
-  const buildFromEstimate = () => {
-    const est = WAGONER_ESTIMATE;
+  const buildFromEstimate = (estArg?: Estimate) => {
+    const est = estArg ?? WAGONER_ESTIMATE;
     // Honor the scheme the user currently has selected (e.g. Blue/White) rather
     // than always resetting to the department's state default.
     const { placements, matches: matchResults, params: builtParams } = autoBuildFromEstimate(est, params.colorScheme);
@@ -418,22 +450,42 @@ export default function Visualizer() {
       const c1 = p.colorOverride?.c1 ?? type.defaultC1;
       const c2 = p.colorOverride?.c2 ?? type.defaultC2;
       const vn = nudge[p.view] ?? { dx: 0, dy: 0 };
+      // The roof bar gets an extra per-vehicle nudge so it seats on the crown.
+      const bn = type.shape === "algt" ? (vehicle.barNudge ?? { dx: 0, dy: 0 }) : { dx: 0, dy: 0 };
       placed.push({
         id: uid(p.typeId),
         view: p.view,
         typeId: p.typeId,
         color1: c1,
         color2: c2,
-        x: Math.max(2, Math.min(98, (p.absX ?? def?.x ?? 50) + p.dx + vn.dx)),
-        y: Math.max(2, Math.min(98, (p.absY ?? def?.y ?? 50) + p.dy + vn.dy)),
+        x: Math.max(2, Math.min(98, (p.absX ?? def?.x ?? 50) + p.dx + vn.dx + bn.dx)),
+        y: Math.max(2, Math.min(98, (p.absY ?? def?.y ?? 50) + p.dy + vn.dy + bn.dy)),
         rotation: def?.rot ?? (p.view === "rear" ? 180 : 0),
         orientation: type.defaultOrientation ?? "horizontal",
         label: type.sku,
       });
     }
+    // De-stack coincident nodes: when two lights land on nearly the same spot
+    // (e.g. a paired red + blue 416300 perimeter light), the top one covers the
+    // other and the buried one feels "locked". Nudge overlapping same-view nodes
+    // apart by a few percent so every light is individually grabbable.
+    const SEP = 3.2; // percent of stage
+    for (let i = 0; i < placed.length; i++) {
+      for (let j = 0; j < i; j++) {
+        if (placed[i].view !== placed[j].view) continue;
+        const dx = placed[i].x - placed[j].x;
+        const dy = placed[i].y - placed[j].y;
+        if (Math.hypot(dx, dy) < SEP) {
+          // push the later node to the right/down a touch (clamped to stage)
+          placed[i].x = Math.max(2, Math.min(98, placed[i].x + SEP));
+          placed[i].y = Math.max(2, Math.min(98, placed[i].y + SEP * 0.4));
+        }
+      }
+    }
     setNodes(placed);
     setParams(builtParams);
     setMatches(matchResults);
+    setActiveEstimate(est);
     setShowMatchPanel(true);
     setSelectedId(null);
     const lit = placed.length;
@@ -444,6 +496,36 @@ export default function Visualizer() {
         builtParams.pushBar ? "push bar on" : "slicktop, no push bar"
       }.`,
     });
+  };
+
+  // Fetch the entered estimate # from the server, then auto-build from it. If
+  // the estimate hasn't been imported yet, show a clear message telling the
+  // operator to have it pulled live from QuickBooks.
+  const runAutoBuild = async () => {
+    const num = estimateNum.trim();
+    if (!num) {
+      toast({ title: "Enter an estimate number", variant: "destructive" });
+      return;
+    }
+    setFetchingEst(true);
+    try {
+      const res = await apiRequest("GET", `/api/estimates/${encodeURIComponent(num)}`);
+      const est = (await res.json()) as Estimate;
+      buildFromEstimate(est);
+    } catch (err: any) {
+      // apiRequest throws on non-2xx; a 404 means the estimate isn't imported.
+      const msg = String(err?.message ?? "");
+      const notImported = msg.includes("404") || msg.toLowerCase().includes("not_imported");
+      toast({
+        title: notImported ? `Estimate #${num} not imported yet` : "Could not load estimate",
+        description: notImported
+          ? "Ask your Perplexity assistant to pull this estimate live from QuickBooks, then try again."
+          : msg,
+        variant: "destructive",
+      });
+    } finally {
+      setFetchingEst(false);
+    }
   };
 
   // ---- Export helpers ----
@@ -580,7 +662,7 @@ export default function Visualizer() {
         pdf.setFontSize(11);
         pdf.setTextColor(180, 190, 205);
         pdf.text(
-          `Est. ${WAGONER_ESTIMATE.docNumber}  ·  ${WAGONER_ESTIMATE.agency}  ·  ${WAGONER_ESTIMATE.customer}`,
+          `Est. ${activeEstimate.docNumber}  ·  ${activeEstimate.agency}  ·  ${activeEstimate.customer}`,
           40,
           58,
         );
@@ -595,7 +677,7 @@ export default function Visualizer() {
         pdf.rect(40, 78, pageW - 80, 26, "F");
         pdf.setTextColor(245, 210, 130);
         pdf.setFontSize(9.5);
-        pdf.text(`Build note: ${WAGONER_ESTIMATE.memo}`, 48, 95, { maxWidth: pageW - 96 });
+        pdf.text(`Build note: ${activeEstimate.memo}`, 48, 95, { maxWidth: pageW - 96 });
 
         // Match table header
         let y = 124;
@@ -677,9 +759,32 @@ export default function Visualizer() {
               ))}
             </select>
           </div>
-          <Button variant="secondary" size="sm" onClick={buildFromEstimate} data-testid="button-load-wagoner">
-            <PackageOpen className="mr-1.5 h-4 w-4" /> Auto-Build from QuickBooks (Est. 1233)
-          </Button>
+          {/* Estimate # input + Auto-Build. Type any imported QuickBooks
+              estimate number; #1233 (Wagoner PD) ships seeded. */}
+          <div className="flex items-center gap-1.5 rounded-md border border-border bg-card/60 pl-2">
+            <span className="text-[11px] font-medium text-muted-foreground">Est. #</span>
+            <input
+              value={estimateNum}
+              onChange={(e) => setEstimateNum(e.target.value.replace(/[^0-9A-Za-z-]/g, ""))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !fetchingEst) runAutoBuild();
+              }}
+              placeholder="1233"
+              inputMode="numeric"
+              className="w-16 bg-transparent py-1 text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground/60"
+              data-testid="input-estimate-num"
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={runAutoBuild}
+              disabled={fetchingEst}
+              data-testid="button-load-wagoner"
+            >
+              <PackageOpen className="mr-1.5 h-4 w-4" />
+              {fetchingEst ? "Loading…" : "Auto-Build from QuickBooks"}
+            </Button>
+          </div>
           <Button variant="outline" size="sm" onClick={exportPng} disabled={exporting} data-testid="button-export-png">
             <Download className="mr-1.5 h-4 w-4" /> PNG
           </Button>
@@ -998,6 +1103,16 @@ export default function Visualizer() {
               draggable={false}
             />
             <VehicleOverlays view={activeView} params={params} pushBarPlacement={vehicle.pushBarPlacement} />
+            {ghostBars.map(({ node, spec }) => (
+              <GhostBar
+                key={`ghost-${node.id}`}
+                node={node}
+                kind={spec.kind}
+                x={spec.x}
+                y={spec.y}
+                barScale={vehicle.barScale ?? 1}
+              />
+            ))}
             {viewNodes.map((n) => (
               <LightNodeMarker
                 key={n.id}
@@ -1010,6 +1125,7 @@ export default function Visualizer() {
                 onRemove={removeNode}
                 onRotate={rotateNode}
                 onFlipOrientation={flipOrientation}
+                barScale={vehicle.barScale ?? 1}
               />
             ))}
             {/* Alignment guide lines (only while dragging with snap on). Hidden
@@ -1141,7 +1257,7 @@ export default function Visualizer() {
               <Separator className="my-4" />
               <div className="mb-2 flex items-center justify-between">
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Est. {WAGONER_ESTIMATE.docNumber} · {WAGONER_ESTIMATE.agency}
+                  Est. {activeEstimate.docNumber} · {activeEstimate.agency}
                 </h2>
                 <button
                   onClick={() => setShowMatchPanel(false)}
@@ -1154,7 +1270,7 @@ export default function Visualizer() {
 
               {/* Memo / build-note banner */}
               <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] leading-snug text-amber-200">
-                <span className="font-semibold">Build note:</span> {WAGONER_ESTIMATE.memo}
+                <span className="font-semibold">Build note:</span> {activeEstimate.memo}
               </div>
 
               <div className="space-y-1 text-[11px]">
@@ -1168,6 +1284,11 @@ export default function Visualizer() {
                   >
                     <div className="min-w-0">
                       <div className="truncate font-mono">{m.itemName}</div>
+                      {m.placement && (
+                        <div className="text-[10px] text-emerald-300">
+                          → {m.placement.label} (from description)
+                        </div>
+                      )}
                       {m.note && <div className="text-[10px] text-amber-300">⚠ {m.note}</div>}
                     </div>
                     <div className="shrink-0 text-right">
