@@ -726,7 +726,7 @@ export default function Visualizer() {
   const selectedNode = nodes.find((n) => n.id === selectedId);
 
   return (
-    <div className="h-screen overflow-hidden bg-background text-foreground flex flex-col">
+    <div className="min-h-screen overflow-y-auto lg:h-screen lg:overflow-hidden bg-background text-foreground flex flex-col">
       {/* Top bar */}
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 md:px-6" data-export-hide>
         <div className="flex items-center gap-3">
@@ -855,7 +855,7 @@ export default function Visualizer() {
         </span>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row">
         {/* Left palette — compact, searchable, collapsible. Sticky header +
             internal scroll so the vehicle stays on screen no matter how many
             parts the catalog grows to. */}
@@ -1055,7 +1055,7 @@ export default function Visualizer() {
         </aside>
 
         {/* Center stage */}
-        <main className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto p-4">
+        <main className="flex w-full flex-col items-center p-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
           <div className="mb-3 flex flex-wrap items-center justify-center gap-2" data-export-hide>
             {VIEWS.map((v) => (
               <button
