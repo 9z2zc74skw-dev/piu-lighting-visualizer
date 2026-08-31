@@ -149,6 +149,16 @@ export default function Visualizer() {
 
   // ---- Snapping ----
   const [snapOn, setSnapOn] = useState(true);
+  // Natural aspect ratio (w/h) of the currently displayed vehicle image. The
+  // stage box is a fixed 4:3 box, but source images vary (square 1:1 for
+  // front/rear views, 3:2 for left/right/hero). object-contain fits the image
+  // inside the box preserving its own aspect ratio, so a 1:1 image only fills
+  // 75% of the stage's WIDTH (letterboxed left/right) even though it fills
+  // 100% of the stage's height. Fixed-pixel-width elements (like the roof
+  // lightbar, sized in raw px against the stage) don't get this same 0.75x
+  // squeeze automatically, so without correction they render ~33% too wide
+  // relative to the visually-displayed vehicle. This factor corrects that.
+  const [imgAspect, setImgAspect] = useState(1);
   // active alignment guides during a drag: vertical (x%) and horizontal (y%) lines
   const [guides, setGuides] = useState<{ vx: number[]; hy: number[] }>({ vx: [], hy: [] });
   const [dragActive, setDragActive] = useState(false);
@@ -1101,6 +1111,12 @@ export default function Visualizer() {
               alt={`PIU ${activeView} view`}
               className="absolute inset-0 h-full w-full object-contain"
               draggable={false}
+              onLoad={(e) => {
+                const el = e.currentTarget;
+                if (el.naturalWidth && el.naturalHeight) {
+                  setImgAspect(el.naturalWidth / el.naturalHeight);
+                }
+              }}
             />
             <VehicleOverlays view={activeView} params={params} pushBarPlacement={vehicle.pushBarPlacement} />
             {ghostBars.map(({ node, spec }) => (
@@ -1110,7 +1126,7 @@ export default function Visualizer() {
                 kind={spec.kind}
                 x={spec.x}
                 y={spec.y}
-                barScale={vehicle.barScale ?? 1}
+                barScale={(vehicle.barScale ?? 1) * Math.min(1, imgAspect / (4 / 3))}
               />
             ))}
             {viewNodes.map((n) => (
@@ -1125,7 +1141,7 @@ export default function Visualizer() {
                 onRemove={removeNode}
                 onRotate={rotateNode}
                 onFlipOrientation={flipOrientation}
-                barScale={vehicle.barScale ?? 1}
+                barScale={(vehicle.barScale ?? 1) * Math.min(1, imgAspect / (4 / 3))}
               />
             ))}
             {/* Alignment guide lines (only while dragging with snap on). Hidden

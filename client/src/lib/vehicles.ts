@@ -61,7 +61,7 @@ export const VEHICLES: VehicleDef[] = [
     },
     // Formula-fit: bar = 0.88 x measured roof width. PIU roof is 57% of the
     // image at the crown band; crown at y~15%, so seat the bar just below it.
-    barScale: 1.04,
+    barScale: 1.03,
     barNudge: { dx: 0, dy: -3 },
   },
   {
@@ -84,7 +84,7 @@ export const VEHICLES: VehicleDef[] = [
       hero: { dx: 0, dy: 1 },
     },
     // Formula-fit: Tahoe roof matches the PIU (~57%), crown at y~14%.
-    barScale: 1.04,
+    barScale: 1.07,
     barNudge: { dx: 0, dy: -4 },
     // Tahoe grille sits lower and is wider/shorter than the PIU. Drop the guard
     // down onto the lower grille opening and size it to the Tahoe fascia.
@@ -115,7 +115,7 @@ export const VEHICLES: VehicleDef[] = [
     },
     // Formula-fit: Durango roof is only ~48% of the image (vehicle is inset in
     // the canvas), so the bar must be smaller. Crown at y~22%, seat just below.
-    barScale: 0.88,
+    barScale: 0.888,
     barNudge: { dx: 0, dy: 4 },
     // Durango front fascia: the crosshair grille sits mid-height and is wider
     // than the PIU. Center the guard on the grille opening and widen slightly.
@@ -144,7 +144,7 @@ export const VEHICLES: VehicleDef[] = [
     },
     // Formula-fit: the black Tahoe is framed smallest (roof only ~38% of the
     // image), so the bar trims hardest. Crown at y~14%.
-    barScale: 0.7,
+    barScale: 0.643,
     barNudge: { dx: 0, dy: -4 },
     pushBarPlacement: {
       front: { cx: 50, cy: 44, w: 30 },
